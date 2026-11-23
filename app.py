@@ -1,4 +1,25 @@
 import streamlit as st
 
-st.set_page_config(page_title="Barber Manager", layout="wide")
-st.title("Barber Manager")
+st.set_page_config(
+    page_title="Local Barber Manager",
+    page_icon="✂️",
+    layout="wide"
+)
+
+pg = st.navigation([
+    st.Page("pages/1_Dashboard.py", title="Dashboard", default=True),
+    st.Page("pages/2_Appuntamenti.py", title="Appuntamenti"),
+    st.Page("pages/3_Clienti.py", title="Clienti"),
+    st.Page("pages/4_Servizi.py", title="Servizi"),
+    st.Page("pages/5_Collaboratori.py", title="Collaboratori"),
+    st.Page("pages/6_Incassi.py", title="Incassi"),
+    st.Page("pages/7_Impostazioni.py", title="Impostazioni"),
+])
+
+pg.run()
+
+# st.sidebar.warning("💈 local-barber-app 💈")
+# st.set_page_config(page_title="Barber Manager", layout="wide")
+# st.switch_page("pages/dashboard.py")
+# Header section - fixed branding
+# st.markdown("### 💈 local-barber-app 💈", unsafe_allow_html=True)
