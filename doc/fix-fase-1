@@ -1,0 +1,28 @@
+ Perfetto. Prima di modificare i file delle schermate, ecco la proposta sintetica per sistemare tutte le lacune UI della FASE 1 usando
+ esclusivamente componenti nativi Streamlit (senza HTML/CSS/JS) e dati dimostrativi mantenuti in st.session_state durante la sessione:
+
+ 1. pages/1_Dashboard.py
+     - Calcolare revenue_today dinamicamente dagli appuntamenti demo del giorno (€ 128.00 invece di 118.0) e rimuovere gli import inutilizzati.
+
+ 2. pages/2_Appuntamenti.py
+     - Aggiornare le date demo in modo relativo a date.today() (oggi, domani, dopodomani) così all'apertura l'elenco mostra subito appuntamenti
+       reali.
+     - Aggiungere la tab "Calendario" (oltre a "Elenco" e "Nuovo appuntamento"): vista settimanale/giornaliera semplice basata su selettore
+       settimana/data e tabella/colonne Streamlit (es. fasce orarie × collaboratori).
+     - Salvare i nuovi appuntamenti demo in st.session_state così compaiono subito in elenco e calendario.
+
+ 3. pages/3_Clienti.py
+     - Aggiungere la tab "Modifica cliente" con st.selectbox per selezionare il cliente esistente e st.form precompilato (nome, telefono, email)
+       con validazione campi obbligatori.
+     - Mantenere la lista clienti in st.session_state per vedere subito inserimenti e modifiche.
+
+ 4. pages/4_Servizi.py
+     - Aggiungere la tab "Modifica servizio" con st.selectbox per scegliere il servizio e st.form precompilato per aggiornare nome, durata (min) e
+       prezzo (€), mantenendo i dati demo in st.session_state.
+
+ 5. pages/5_Collaboratori.py
+     - Estendere i dati demo e i form con orari e giorni lavorativi (st.time_input inizio/fine turno e st.multiselect giorni lavorativi, oltre al
+       flag Disponibile).
+     - Aggiungere la tab "Modifica collaboratore / orari" per aggiornare disponibilità e orari esistenti in st.session_state.
+
+ Ti va bene questo approccio per completare la FASE 1? Appena confermi applico le modifiche e verifico l'esecuzione.
