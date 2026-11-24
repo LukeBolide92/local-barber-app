@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-from datetime import date, datetime
 
 # Demo data
 appointments_today = [
@@ -10,7 +9,7 @@ appointments_today = [
     {"id": 4, "client": "Mario Rossi", "service": "Barba", "time": "15:30", "price": 12.0},
     {"id": 5, "client": "Giulia Bianchi", "service": "Taglio", "time": "16:30", "price": 18.0},
 ]
-revenue_today = 118.0
+revenue_today = sum(a["price"] for a in appointments_today)
 revenue_this_month = 2450.0
 
 st.title("Dashboard")
