@@ -1,6 +1,7 @@
 from sqlalchemy import String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
+
 
 class Client(Base):
     __tablename__ = "clients"
@@ -9,3 +10,6 @@ class Client(Base):
     name: Mapped[str] = mapped_column(String(100))
     phone: Mapped[str] = mapped_column(String(20))
     email: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
+    # Relation
+    appointments: Mapped[list["Appointment"]] = relationship(back_populates="client")

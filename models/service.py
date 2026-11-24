@@ -1,6 +1,7 @@
 from sqlalchemy import String, Float, Integer
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
+
 
 class Service(Base):
     __tablename__ = "services"
@@ -9,3 +10,6 @@ class Service(Base):
     name: Mapped[str] = mapped_column(String(100))
     duration_minutes: Mapped[int] = mapped_column(Integer)
     price: Mapped[float] = mapped_column(Float)
+
+    # Relationships
+    appointments: Mapped[list["Appointment"]] = relationship(back_populates="service")
