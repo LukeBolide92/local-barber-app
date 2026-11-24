@@ -1,3 +1,7 @@
 /.venv/
 /.pi/
 /.idea/
+__pycache__/
+*.pyc
+barber.db
+backups/

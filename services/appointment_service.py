@@ -1,8 +1,7 @@
-from datetime import date, time
-from typing import Optional
-from sqlalchemy import select, func
-from database import get_session
-from models import Appointment, Client, Service, Collaborator
+from datetime import date, time, timedelta
+from sqlalchemy import select
+from sqlalchemy.orm import joinedload
+from models import Appointment, Service
 
 
 def create_appointment(
@@ -28,15 +27,58 @@ def create_appointment(
     return appointment
 
 
-def get_appointments(session, date_filter: date | None = None) -> list[Appointment]:
-    stmt = select(Appointment).order_by(Appointment.date, Appointment.time)
-    if date_filter:
+def get_appointments(
+    session,
+    date_filter: date | None = None,
+    collaborator_id: int | None = None,
+) -> list[Appointment]:
+    stmt = (
+        select(Appointment)
+        .options(
+            joinedload(Appointment.client),
+            joinedload(Appointment.service),
+            joinedload(Appointment.collaborator),
+        )
+        .order_by(Appointment.date, Appointment.time)
+    )
+    if date_filter is not None:
         stmt = stmt.where(Appointment.date == date_filter)
+    if collaborator_id is not None:
+        stmt = stmt.where(Appointment.collaborator_id == collaborator_id)
+    return list(session.execute(stmt).scalars().all())
+
+
+def get_appointments_in_range(
+    session,
+    start_date: date,
+    end_date: date,
+    collaborator_id: int | None = None,
+) -> list[Appointment]:
+    stmt = (
+        select(Appointment)
+        .options(
+            joinedload(Appointment.client),
+            joinedload(Appointment.service),
+            joinedload(Appointment.collaborator),
+        )
+        .where(Appointment.date >= start_date, Appointment.date <= end_date)
+        .order_by(Appointment.date, Appointment.time)
+    )
+    if collaborator_id is not None:
+        stmt = stmt.where(Appointment.collaborator_id == collaborator_id)
     return list(session.execute(stmt).scalars().all())
 
 
 def get_appointment_by_id(session, appointment_id: int) -> Appointment | None:
-    stmt = select(Appointment).where(Appointment.id == appointment_id)
+    stmt = (
+        select(Appointment)
+        .options(
+            joinedload(Appointment.client),
+            joinedload(Appointment.service),
+            joinedload(Appointment.collaborator),
+        )
+        .where(Appointment.id == appointment_id)
+    )
     return session.execute(stmt).scalar_one_or_none()
 
 
@@ -50,12 +92,7 @@ def delete_appointment(session, appointment_id: int) -> bool:
 
 
 def get_appointments_by_date(session, appt_date: date) -> list[Appointment]:
-    stmt = (
-        select(Appointment)
-        .where(Appointment.date == appt_date)
-        .order_by(Appointment.time)
-    )
-    return list(session.execute(stmt).scalars().all())
+    return get_appointments(session, date_filter=appt_date)
 
 
 def get_revenue_summary(session) -> dict:
@@ -69,14 +106,14 @@ def get_revenue_summary(session) -> dict:
     stmt = (
         select(Appointment, Service)
         .join(Service, Appointment.service_id == Service.id)
-        .where(Appointment.date >= start_month)
+        .where(Appointment.date >= start_month, Appointment.date <= today)
     )
     month_revenue = sum(
         service.price for _, service in session.execute(stmt).all()
     )
 
     return {
-        "today": today_revenue,
-        "month": month_revenue,
+        "today": float(today_revenue),
+        "month": float(month_revenue),
         "today_count": len(today_appointments),
     }

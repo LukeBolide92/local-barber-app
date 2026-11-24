@@ -1,11 +1,13 @@
-from typing import Optional
-from database import get_session
 from models import Client
 from sqlalchemy import select, func
 
 
 def create_client(session, name: str, phone: str, email: str | None = None) -> Client:
-    client = Client(name=name, phone=phone, email=email)
+    client = Client(
+        name=name.strip(),
+        phone=phone.strip(),
+        email=email.strip() if email and email.strip() else None,
+    )
     session.add(client)
     session.commit()
     session.refresh(client)
@@ -28,9 +30,9 @@ def update_client(
     client = get_client_by_id(session, client_id)
     if not client:
         return None
-    client.name = name
-    client.phone = phone
-    client.email = email
+    client.name = name.strip()
+    client.phone = phone.strip()
+    client.email = email.strip() if email and email.strip() else None
     session.commit()
     session.refresh(client)
     return client
@@ -46,9 +48,16 @@ def delete_client(session, client_id: int) -> bool:
 
 
 def search_clients(session, query: str) -> list[Client]:
-    stmt = select(Client).where(
-        Client.name.contains(query)
-        | Client.phone.contains(query)
-        | Client.email.contains(query)
+    q = query.strip()
+    if not q:
+        return get_clients(session)
+    stmt = (
+        select(Client)
+        .where(
+            Client.name.ilike(f"%{q}%")
+            | Client.phone.ilike(f"%{q}%")
+            | func.coalesce(Client.email, "").ilike(f"%{q}%")
+        )
+        .order_by(Client.name)
     )
     return list(session.execute(stmt).scalars().all())

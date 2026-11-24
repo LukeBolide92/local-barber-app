@@ -1,11 +1,13 @@
-from typing import Optional
-from database import get_session
 from models import Service
 from sqlalchemy import select
 
 
 def create_service(session, name: str, duration_minutes: int, price: float) -> Service:
-    service = Service(name=name, duration_minutes=duration_minutes, price=price)
+    service = Service(
+        name=name.strip(),
+        duration_minutes=int(duration_minutes),
+        price=float(price),
+    )
     session.add(service)
     session.commit()
     session.refresh(service)
@@ -28,9 +30,9 @@ def update_service(
     service = get_service_by_id(session, service_id)
     if not service:
         return None
-    service.name = name
-    service.duration_minutes = duration_minutes
-    service.price = price
+    service.name = name.strip()
+    service.duration_minutes = int(duration_minutes)
+    service.price = float(price)
     session.commit()
     session.refresh(service)
     return service

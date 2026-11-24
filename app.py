@@ -1,10 +1,13 @@
 import streamlit as st
+from database import init_db
 
 st.set_page_config(
     page_title="Local Barber Manager",
     page_icon="✂️",
-    layout="wide"
+    layout="wide",
 )
+
+init_db()
 
 pg = st.navigation([
     st.Page("pages/1_Dashboard.py", title="Dashboard", default=True),
@@ -17,9 +20,3 @@ pg = st.navigation([
 ])
 
 pg.run()
-
-# st.sidebar.warning("💈 local-barber-app 💈")
-# st.set_page_config(page_title="Barber Manager", layout="wide")
-# st.switch_page("pages/dashboard.py")
-# Header section - fixed branding
-# st.markdown("### 💈 local-barber-app 💈", unsafe_allow_html=True)

@@ -1,24 +1,29 @@
-from typing import Optional
 from datetime import time
 import json
-from database import get_session
 from models import Collaborator
 from sqlalchemy import select
 
 
-def _serialize_work_days(work_days: list[str] | None) -> str | None:
-    if work_days is None:
-        return None
-    return json.dumps(work_days)
+DEFAULT_WORK_DAYS = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì"]
 
 
-def _deserialize_work_days(work_days_str: str | None) -> list[str]:
+def serialize_work_days(work_days: list[str] | None) -> str:
+    return json.dumps(work_days if work_days is not None else DEFAULT_WORK_DAYS)
+
+
+def deserialize_work_days(work_days_str: str | None) -> list[str]:
     if not work_days_str:
-        return ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì"]
+        return list(DEFAULT_WORK_DAYS)
     try:
-        return json.loads(work_days_str)
+        data = json.loads(work_days_str)
+        return data if isinstance(data, list) else list(DEFAULT_WORK_DAYS)
     except (json.JSONDecodeError, TypeError):
-        return ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì"]
+        return list(DEFAULT_WORK_DAYS)
+
+
+# Backwards-compatible aliases
+_serialize_work_days = serialize_work_days
+_deserialize_work_days = deserialize_work_days
 
 
 def create_collaborator(
@@ -31,12 +36,12 @@ def create_collaborator(
     work_days: list[str] | None = None,
 ) -> Collaborator:
     collaborator = Collaborator(
-        name=name,
+        name=name.strip(),
         role=role,
         availability=1 if availability else 0,
         start_time=start_time or time(9, 0),
         end_time=end_time or time(18, 0),
-        work_days=_serialize_work_days(work_days),
+        work_days=serialize_work_days(work_days),
     )
     session.add(collaborator)
     session.commit()
@@ -44,8 +49,10 @@ def create_collaborator(
     return collaborator
 
 
-def get_collaborators(session) -> list[Collaborator]:
+def get_collaborators(session, only_available: bool = False) -> list[Collaborator]:
     stmt = select(Collaborator).order_by(Collaborator.name)
+    if only_available:
+        stmt = stmt.where(Collaborator.availability == 1)
     return list(session.execute(stmt).scalars().all())
 
 
@@ -67,12 +74,12 @@ def update_collaborator(
     collaborator = get_collaborator_by_id(session, collaborator_id)
     if not collaborator:
         return None
-    collaborator.name = name
+    collaborator.name = name.strip()
     collaborator.role = role
     collaborator.availability = 1 if availability else 0
     collaborator.start_time = start_time
     collaborator.end_time = end_time
-    collaborator.work_days = _serialize_work_days(work_days)
+    collaborator.work_days = serialize_work_days(work_days)
     session.commit()
     session.refresh(collaborator)
     return collaborator

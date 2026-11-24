@@ -1,65 +1,104 @@
-import streamlit as st
+from datetime import date, time, timedelta
 import pandas as pd
-from datetime import date, time, datetime, timedelta
-import calendar
+import streamlit as st
+from database import get_session, init_db
+from services.appointment_service import (
+    create_appointment,
+    delete_appointment,
+    get_appointments,
+    get_appointments_in_range,
+)
+from services.client_service import get_clients
+from services.collaborator_service import get_collaborators
+from services.service import get_services
+
+init_db()
 
 st.title("Appuntamenti")
 
-# Init session_state demo data with relative dates
-if "appointments_data" not in st.session_state:
-    today = date.today()
-    st.session_state.appointments_data = [
-        {"id": 1, "date": today, "client": "Mario Rossi", "service": "Taglio + Barba", "collaborator": "Marco", "time": "09:00"},
-        {"id": 2, "date": today, "client": "Luca Verdi", "service": "Taglio", "collaborator": "Paolo", "time": "10:30"},
-        {"id": 3, "date": today + timedelta(days=1), "client": "Giulia Bianchi", "service": "Colorazione", "collaborator": "Marco", "time": "14:00"},
-        {"id": 4, "date": today + timedelta(days=2), "client": "Mario Rossi", "service": "Barba", "collaborator": "Paolo", "time": "15:30"},
-        {"id": 5, "date": today + timedelta(days=2), "client": "Giulia Bianchi", "service": "Taglio", "collaborator": "Marco", "time": "16:30"},
-    ]
-    st.session_state.next_appt_id = 6
-
-all_appointments = st.session_state.appointments_data
-
-clients = [
-    {"id": 1, "name": "Mario Rossi"},
-    {"id": 2, "name": "Luca Verdi"},
-    {"id": 3, "name": "Giulia Bianchi"},
-]
-services = [
-    {"id": 1, "name": "Taglio", "duration": 30, "price": 18.0},
-    {"id": 2, "name": "Barba", "duration": 20, "price": 12.0},
-    {"id": 3, "name": "Taglio + Barba", "duration": 45, "price": 25.0},
-    {"id": 4, "name": "Colorazione", "duration": 60, "price": 55.0},
-]
-collaborators = [
-    {"id": 1, "name": "Marco"},
-    {"id": 2, "name": "Paolo"},
-]
+try:
+    with get_session() as session:
+        clients = get_clients(session)
+        services = get_services(session)
+        collaborators = get_collaborators(session)
+except Exception as exc:
+    st.error(f"Errore nel caricamento dei dati di base: {exc}")
+    st.stop()
 
 tab_list, tab_cal, tab_new = st.tabs(["Elenco", "Calendario", "Nuovo appuntamento"])
 
 with tab_list:
     st.subheader("Filtri")
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns([2, 2, 1])
     with col1:
-        filter_date = st.date_input("Data", value=date.today())
+        filter_date = st.date_input("Data", value=date.today(), key="appt_list_date")
     with col2:
-        filter_collab = st.selectbox("Collaboratore", ["Tutti"] + [c["name"] for c in collaborators])
+        collab_options = [("Tutti", None)] + [(c.name, c.id) for c in collaborators]
+        selected_collab = st.selectbox(
+            "Collaboratore",
+            options=collab_options,
+            format_func=lambda item: item[0],
+            key="appt_list_collab",
+        )
+    with col3:
+        show_all_dates = st.checkbox("Tutte le date", value=False, key="appt_list_all")
 
-    filtered = [a for a in all_appointments if a["date"] == filter_date]
-    if filter_collab != "Tutti":
-        filtered = [a for a in filtered if a["collaborator"] == filter_collab]
+    try:
+        with get_session() as session:
+            filtered = get_appointments(
+                session,
+                date_filter=None if show_all_dates else filter_date,
+                collaborator_id=selected_collab[1],
+            )
+    except Exception as exc:
+        st.error(f"Errore nel recupero degli appuntamenti: {exc}")
+        filtered = []
 
     if filtered:
-        df = pd.DataFrame(filtered)
-        df = df.rename(columns={
-            "id": "ID",
-            "date": "Data",
-            "client": "Cliente",
-            "service": "Servizio",
-            "collaborator": "Collaboratore",
-            "time": "Orario",
-        })
-        st.dataframe(df, hide_index=True)
+        rows = [
+            {
+                "ID": a.id,
+                "Data": a.date,
+                "Orario": a.time.strftime("%H:%M"),
+                "Cliente": a.client.name if a.client else "-",
+                "Servizio": a.service.name if a.service else "-",
+                "Collaboratore": a.collaborator.name if a.collaborator else "-",
+                "Prezzo": float(a.service.price) if a.service else 0.0,
+                "Note": a.notes or "",
+            }
+            for a in filtered
+        ]
+        df = pd.DataFrame(rows)
+        st.dataframe(
+            df,
+            column_config={
+                "Prezzo": st.column_config.NumberColumn("Prezzo", format="€ %.2f"),
+            },
+            hide_index=True,
+            width="stretch",
+        )
+
+        with st.expander("Elimina appuntamento"):
+            appt_to_delete = st.selectbox(
+                "Seleziona appuntamento da eliminare",
+                options=filtered,
+                format_func=lambda a: (
+                    f"#{a.id} - {a.date} {a.time.strftime('%H:%M')} - "
+                    f"{a.client.name if a.client else '-'} ({a.service.name if a.service else '-'})"
+                ),
+                key="delete_appt_select",
+            )
+            if st.button("Elimina appuntamento", type="secondary"):
+                try:
+                    with get_session() as session:
+                        deleted = delete_appointment(session, appt_to_delete.id)
+                    if deleted:
+                        st.success("Appuntamento eliminato.")
+                        st.rerun()
+                    else:
+                        st.warning("Appuntamento non trovato.")
+                except Exception as exc:
+                    st.error(f"Errore durante l'eliminazione: {exc}")
     else:
         st.info("Nessun appuntamento per i filtri selezionati.")
 
@@ -67,97 +106,131 @@ with tab_cal:
     st.subheader("Calendario")
     col1, col2 = st.columns(2)
     with col1:
-        cal_start = st.date_input("Data inizio", value=date.today())
+        cal_start = st.date_input("Data di riferimento", value=date.today(), key="appt_cal_date")
     with col2:
-        cal_week_mode = st.checkbox("Vista settimanale", value=True)
+        cal_week_mode = st.checkbox("Vista settimanale", value=True, key="appt_cal_week")
 
-    # Determine date range
     if cal_week_mode:
-        # Monday-based week
         monday = cal_start - timedelta(days=cal_start.weekday())
-        week_dates = [monday + timedelta(days=i) for i in range(7)]
-        display_dates = week_dates
+        display_dates = [monday + timedelta(days=i) for i in range(7)]
+        range_start, range_end = display_dates[0], display_dates[-1]
     else:
         display_dates = [cal_start]
+        range_start = range_end = cal_start
 
-    # Build a grid: rows = time slots (09-18), cols = dates
-    time_slots = [f"{h:02d}:00" for h in range(9, 19)]
-    cal_data = {slot: [] for slot in time_slots}
-    for d in display_dates:
-        cal_data[d] = {slot: [] for slot in time_slots}
+    try:
+        with get_session() as session:
+            range_appointments = get_appointments_in_range(session, range_start, range_end)
+    except Exception as exc:
+        st.error(f"Errore nel caricamento del calendario: {exc}")
+        range_appointments = []
 
-    for a in all_appointments:
-        for d in display_dates:
-            if a["date"] == d:
-                # Map time to nearest slot
-                hhmm = a["time"]
-                slot = hhmm[:2] + ":00"
-                if slot in cal_data[d]:
-                    cal_data[d][slot].append(a)
+    time_slots = [f"{h:02d}:00" for h in range(8, 21)]
 
     if cal_week_mode:
-        # Build table for week view
+        cal_data = {d: {slot: [] for slot in time_slots} for d in display_dates}
+        for a in range_appointments:
+            slot = f"{a.time.hour:02d}:00"
+            if a.date in cal_data and slot in cal_data[a.date]:
+                cal_data[a.date][slot].append(a)
+
         week_rows = []
         for slot in time_slots:
             row = {"Orario": slot}
             for d in display_dates:
-                apps = cal_data[d].get(slot, [])
-                if apps:
-                    row[str(d)] = "\n".join(
-                        f"{a['client']} ({a['service']}) - {a['collaborator']}" for a in apps
+                apps = cal_data[d][slot]
+                row[d.strftime("%d/%m")] = (
+                    "\n".join(
+                        f"{a.time.strftime('%H:%M')} {a.client.name if a.client else '-'} "
+                        f"({a.service.name if a.service else '-'}) - "
+                        f"{a.collaborator.name if a.collaborator else '-'}"
+                        for a in apps
                     )
-                else:
-                    row[str(d)] = ""
+                    if apps
+                    else ""
+                )
             week_rows.append(row)
-        if week_rows:
-            df_cal = pd.DataFrame(week_rows)
-            df_cal = df_cal.set_index("Orario")
-            st.dataframe(df_cal, use_container_width=True)
-        else:
-            st.info("Nessun appuntamento nella settimana selezionata.")
+
+        df_cal = pd.DataFrame(week_rows).set_index("Orario")
+        st.dataframe(df_cal, width="stretch")
     else:
-        # Single day view: columns = collaborators
-        day = cal_start
-        collab_names = [c["name"] for c in collaborators]
-        day_rows = []
-        for slot in time_slots:
-            row = {"Orario": slot}
-            for cname in collab_names:
-                apps = [
-                    a for a in all_appointments
-                    if a["date"] == day and a["collaborator"] == cname
-                    and a["time"][:2] + ":00" == slot
-                ]
-                if apps:
-                    row[cname] = "\n".join(
-                        f"{a['client']} ({a['service']})" for a in apps
+        collab_names = [c.name for c in collaborators]
+        if not collab_names:
+            st.info("Nessun collaboratore configurato.")
+        else:
+            day_rows = []
+            for slot in time_slots:
+                row = {"Orario": slot}
+                for cname in collab_names:
+                    apps = [
+                        a
+                        for a in range_appointments
+                        if a.date == cal_start
+                        and a.collaborator
+                        and a.collaborator.name == cname
+                        and f"{a.time.hour:02d}:00" == slot
+                    ]
+                    row[cname] = (
+                        "\n".join(
+                            f"{a.time.strftime('%H:%M')} {a.client.name if a.client else '-'} "
+                            f"({a.service.name if a.service else '-'})"
+                            for a in apps
+                        )
+                        if apps
+                        else ""
                     )
-                else:
-                    row[cname] = ""
-            day_rows.append(row)
-        df_day = pd.DataFrame(day_rows).set_index("Orario")
-        st.dataframe(df_day, use_container_width=True)
+                day_rows.append(row)
+            df_day = pd.DataFrame(day_rows).set_index("Orario")
+            st.dataframe(df_day, width="stretch")
 
 with tab_new:
     st.subheader("Nuovo appuntamento")
-    with st.form("new_appointment_form"):
-        client = st.selectbox("Cliente", [c["name"] for c in clients])
-        service = st.selectbox("Servizio", [s["name"] for s in services])
-        collaborator = st.selectbox("Collaboratore", [c["name"] for c in collaborators])
-        appt_date = st.date_input("Data", value=date.today())
-        appt_time = st.time_input("Orario", value=time(9, 0))
-        notes = st.text_area("Note", height=80)
-        submitted = st.form_submit_button("Salva")
-        if submitted:
-            st.session_state.appointments_data.append({
-                "id": st.session_state.next_appt_id,
-                "date": appt_date,
-                "client": client,
-                "service": service,
-                "collaborator": collaborator,
-                "time": appt_time.strftime("%H:%M"),
-                "notes": notes,
-            })
-            st.session_state.next_appt_id += 1
-            st.success("Appuntamento creato (demo).")
-            st.rerun()
+    available_collaborators = [c for c in collaborators if c.availability == 1]
+
+    if not clients or not services or not available_collaborators:
+        missing = []
+        if not clients:
+            missing.append("almeno un cliente")
+        if not services:
+            missing.append("almeno un servizio")
+        if not available_collaborators:
+            missing.append("almeno un collaboratore disponibile")
+        st.warning(f"Per creare un appuntamento devi prima inserire: {', '.join(missing)}.")
+    else:
+        with st.form("new_appointment_form"):
+            selected_client = st.selectbox(
+                "Cliente",
+                options=clients,
+                format_func=lambda c: f"{c.name} ({c.phone})",
+            )
+            selected_service = st.selectbox(
+                "Servizio",
+                options=services,
+                format_func=lambda s: f"{s.name} - {s.duration_minutes} min (€ {s.price:.2f})",
+            )
+            selected_collaborator = st.selectbox(
+                "Collaboratore",
+                options=available_collaborators,
+                format_func=lambda col: f"{col.name} ({col.role})",
+            )
+            appt_date = st.date_input("Data", value=date.today())
+            appt_time = st.time_input("Orario", value=time(9, 0))
+            notes = st.text_area("Note", height=80)
+            submitted = st.form_submit_button("Salva")
+
+            if submitted:
+                try:
+                    with get_session() as session:
+                        create_appointment(
+                            session,
+                            client_id=selected_client.id,
+                            service_id=selected_service.id,
+                            collaborator_id=selected_collaborator.id,
+                            appt_date=appt_date,
+                            appt_time=appt_time,
+                            notes=notes.strip() if notes.strip() else None,
+                        )
+                    st.success("Appuntamento salvato nel database.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Errore durante il salvataggio dell'appuntamento: {exc}")
