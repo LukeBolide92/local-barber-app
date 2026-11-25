@@ -29,15 +29,31 @@ def is_collaborator_available(
         if appt_time_normalized < collaborator.start_time or appt_time_normalized > collaborator.end_time:
             return False
 
-    # Controlla giorni di lavoro (formato JSON '0,1,2,3,4' per lun-ven)
+    # Controlla giorni di lavoro (supporta sia nomi italiani es. ["Lunedì", ...] sia indici 0..6)
     if collaborator.work_days:
         import json
+        weekday_names = [
+            "lunedì",
+            "martedì",
+            "mercoledì",
+            "giovedì",
+            "venerdì",
+            "sabato",
+            "domenica",
+        ]
         try:
             work_days_list = json.loads(collaborator.work_days)
-            # Python datetime weekday: 0=Monday, 6=Sunday
-            appt_weekday = appt_date.weekday()
-            if appt_weekday not in work_days_list:
-                return False
+            if isinstance(work_days_list, list):
+                appt_weekday = appt_date.weekday()
+                appt_day_name = weekday_names[appt_weekday]
+                normalized_days = {
+                    str(d).strip().lower() for d in work_days_list
+                }
+                if (
+                    str(appt_weekday) not in normalized_days
+                    and appt_day_name not in normalized_days
+                ):
+                    return False
         except (json.JSONDecodeError, TypeError):
             pass
 
@@ -71,20 +87,19 @@ def check_appointment_conflict(
 
     # Controlla conflitti: l'orario nuovo deve non sovrapporsi a nessun appuntamento esistente
     for existing in appointments:
-        existing_start = existing.time
+        existing_start_dt = datetime.combine(appt_date, existing.time)
         # Calcola fine appuntamento esistente basata sulla durata del servizio
         existing_duration = 60  # default 1 ora se non disponibile
         if existing.service:
             existing_duration = existing.service.duration_minutes
-        existing_end = datetime.combine(appt_date, existing_start) + timedelta(minutes=existing_duration)
+        existing_end = existing_start_dt + timedelta(minutes=existing_duration)
 
-        # Nuovo orario di inizio
+        # Nuovo orario di inizio e fine
         new_start = datetime.combine(appt_date, appt_time)
-        # Nuovo orario di fine
         new_end = appt_end
 
         # Controllo sovrapposizione
-        if new_start < existing_end and new_end.time() > existing_start:
+        if new_start < existing_end and new_end > existing_start_dt:
             return True  # Conflitto rilevato
 
     return False
