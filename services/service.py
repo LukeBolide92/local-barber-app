@@ -3,8 +3,15 @@ from sqlalchemy import select
 
 
 def create_service(session, name: str, duration_minutes: int, price: float) -> Service:
+    clean_name = name.strip()
+    existing = session.execute(
+        select(Service).where(Service.name.ilike(clean_name))
+    ).scalar_one_or_none()
+    if existing:
+        raise ValueError(f"Esiste già un servizio con nome '{clean_name}'")
+
     service = Service(
-        name=name.strip(),
+        name=clean_name,
         duration_minutes=int(duration_minutes),
         price=float(price),
     )
@@ -30,7 +37,15 @@ def update_service(
     service = get_service_by_id(session, service_id)
     if not service:
         return None
-    service.name = name.strip()
+
+    clean_name = name.strip()
+    existing = session.execute(
+        select(Service).where(Service.name.ilike(clean_name), Service.id != service_id)
+    ).scalar_one_or_none()
+    if existing:
+        raise ValueError(f"Esiste già un servizio con nome '{clean_name}'")
+
+    service.name = clean_name
     service.duration_minutes = int(duration_minutes)
     service.price = float(price)
     session.commit()

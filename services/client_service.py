@@ -3,8 +3,15 @@ from sqlalchemy import select, func
 
 
 def create_client(session, name: str, phone: str, email: str | None = None) -> Client:
+    clean_name = name.strip()
+    existing = session.execute(
+        select(Client).where(Client.name.ilike(clean_name))
+    ).scalar_one_or_none()
+    if existing:
+        raise ValueError(f"Esiste già un cliente con nome '{clean_name}'")
+
     client = Client(
-        name=name.strip(),
+        name=clean_name,
         phone=phone.strip(),
         email=email.strip() if email and email.strip() else None,
     )
@@ -30,7 +37,15 @@ def update_client(
     client = get_client_by_id(session, client_id)
     if not client:
         return None
-    client.name = name.strip()
+
+    clean_name = name.strip()
+    existing = session.execute(
+        select(Client).where(Client.name.ilike(clean_name), Client.id != client_id)
+    ).scalar_one_or_none()
+    if existing:
+        raise ValueError(f"Esiste già un cliente con nome '{clean_name}'")
+
+    client.name = clean_name
     client.phone = phone.strip()
     client.email = email.strip() if email and email.strip() else None
     session.commit()

@@ -35,8 +35,15 @@ def create_collaborator(
     end_time: time | None = None,
     work_days: list[str] | None = None,
 ) -> Collaborator:
+    clean_name = name.strip()
+    existing = session.execute(
+        select(Collaborator).where(Collaborator.name.ilike(clean_name))
+    ).scalar_one_or_none()
+    if existing:
+        raise ValueError(f"Esiste già un collaboratore con nome '{clean_name}'")
+
     collaborator = Collaborator(
-        name=name.strip(),
+        name=clean_name,
         role=role,
         availability=1 if availability else 0,
         start_time=start_time or time(9, 0),
@@ -74,7 +81,18 @@ def update_collaborator(
     collaborator = get_collaborator_by_id(session, collaborator_id)
     if not collaborator:
         return None
-    collaborator.name = name.strip()
+
+    clean_name = name.strip()
+    existing = session.execute(
+        select(Collaborator).where(
+            Collaborator.name.ilike(clean_name),
+            Collaborator.id != collaborator_id,
+        )
+    ).scalar_one_or_none()
+    if existing:
+        raise ValueError(f"Esiste già un collaboratore con nome '{clean_name}'")
+
+    collaborator.name = clean_name
     collaborator.role = role
     collaborator.availability = 1 if availability else 0
     collaborator.start_time = start_time
