@@ -7,6 +7,8 @@ from services.appointment_service import (
     delete_appointment,
     get_appointments,
     get_appointments_in_range,
+    is_collaborator_available,
+    check_appointment_conflict,
 )
 from services.client_service import get_clients
 from services.collaborator_service import get_collaborators
@@ -221,6 +223,17 @@ with tab_new:
             if submitted:
                 try:
                     with get_session() as session:
+                        # Controlli preliminari
+                        duration_minutes = selected_service.duration_minutes if selected_service else 60
+                        
+                        # Verifica disponibilità collaboratore
+                        if not is_collaborator_available(session, selected_collaborator.id, appt_date, appt_time):
+                            raise ValueError(f"Collaboratore non disponibile in data {appt_date} alle {appt_time.strftime('%H:%M')}")
+                        
+                        # Verifica conflitto appuntamento
+                        if check_appointment_conflict(session, selected_collaborator.id, appt_date, appt_time, duration_minutes):
+                            raise ValueError("Conflitto di orario: il collaboratore ha già un appuntamento in quel momento")
+                        
                         create_appointment(
                             session,
                             client_id=selected_client.id,
@@ -232,5 +245,7 @@ with tab_new:
                         )
                     st.success("Appuntamento salvato nel database.")
                     st.rerun()
+                except ValueError as ve:
+                    st.error(f"Errore di validazione: {ve}")
                 except Exception as exc:
                     st.error(f"Errore durante il salvataggio dell'appuntamento: {exc}")
