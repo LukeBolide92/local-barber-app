@@ -6,7 +6,7 @@ from services.appointment_service import get_appointments_by_date, get_revenue_s
 
 init_db()
 
-st.title("Dashboard")
+st.title("Local Barber Manager ✂️")
 st.subheader("Appuntamenti di oggi")
 
 try:
