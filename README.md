@@ -11,6 +11,14 @@ Progettato per funzionare interamente in locale su PC Windows senza servizi clou
 - **Appuntamenti (`pages/2_Appuntamenti.py`)**:
   - Elenco filtrabile per data e collaboratore con eliminazione appuntamenti.
   - Calendario con vista giornaliera o settimanale.
+  - Creazione nuovo appuntamento con controlli automatici di disponibilità collaboratore (stato attivo, giorni lavorativi, fascia oraria) e conflitti di orario.
+  - Modifica: aggiornare data, orario, note, stato (BOOKED/COMPLETED/CANCELLED/NO_SHOW).
+  - Annullamento: solo se non completato.
+  - Registrazione assenza (NO_SHOW): solo se non completato.
+  - Completamento: conserva prezzo e durata originari del servizio.
+- **Clienti**, **Servizi**, **Collaboratori**...
+  - Elenco filtrabile per data e collaboratore con eliminazione appuntamenti.
+  - Calendario con vista giornaliera o settimanale.
   - Creazione nuovo appuntamento con controlli automatici di **disponibilità collaboratore** (stato attivo, giorni lavorativi, fascia oraria) e **conflitti di orario** in base alla durata del servizio.
 - **Clienti (`pages/3_Clienti.py`)**: ricerca per nome/telefono/email, inserimento, modifica ed eliminazione (con validazione di unicità del nome).
 - **Servizi (`pages/4_Servizi.py`)**: gestione listino servizi con durata in minuti e prezzo (con validazione di unicità del nome).
@@ -94,6 +102,31 @@ local-barber-app/
 
 1. Vai nella sezione **Impostazioni** dal menu laterale.
 2. Clicca su **Crea backup ora** per salvare una copia completa del database nella cartella `backups/` con data e ora (`barber_backup_YYYYMMDD_HHMMSS.db`).
+3. Puoi scaricare, eliminare o ripristinare i backup dalla stessa pagina.
+
+---
+
+## Migrazione database
+
+Poiché sono state aggiunte nuove colonne al modello `Appointment` (status, price, duration_minutes), è necessaria una migrazione per gli utenti che hanno già un database esistente:
+
+1. **Nuova installazione**: Eliminare `data/barber.db` e lasciare che l'applicazione crei un nuovo database con la struttura aggiornata.
+
+2. **Migrazione manuale**: Aggiungere le seguenti colonne alla tabella `appointments` nel database esistente:
+
+```sql
+ALTER TABLE appointments ADD COLUMN status TEXT DEFAULT 'BOOKED';
+ALTER TABLE appointments ADD COLUMN price REAL;
+ALTER TABLE appointments ADD COLUMN duration_minutes INTEGER;
+```
+
+### Campo status (TASK 2)
+
+Ogni appuntamento ha uno stato:
+- `BOOKED`: appuntamento prenotato
+- `COMPLETED`: appuntamento completato
+- `CANCELLED`: annullato
+- `NO_SHOW`: cliente assente
 3. Puoi scaricare il file `.db` su una chiavetta USB o altro disco usando **Scarica backup selezionato**.
 4. Per ripristinare i dati:
    - scegli un backup dall'elenco locale nella sezione **Ripristina dal backup selezionato**, oppure

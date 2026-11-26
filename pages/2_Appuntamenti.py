@@ -9,6 +9,10 @@ from services.appointment_service import (
     get_appointments_in_range,
     is_collaborator_available,
     check_appointment_conflict,
+    update_appointment,
+    cancel_appointment,
+    complete_appointment,
+    register_no_show,
 )
 from services.client_service import get_clients
 from services.collaborator_service import get_collaborators
@@ -29,9 +33,16 @@ except Exception as exc:
 
 tab_list, tab_cal, tab_new = st.tabs(["Elenco", "Calendario", "Nuovo appuntamento"])
 
+STATUS_LABELS = {
+    "BOOKED": "Prenotato",
+    "COMPLETED": "Completato",
+    "CANCELLED": "Annullato",
+    "NO_SHOW": "Assente",
+}
+
 with tab_list:
     st.subheader("Filtri")
-    col1, col2, col3 = st.columns([2, 2, 1])
+    col1, col2, col3, col4 = st.columns([2, 2, 2, 1])
     with col1:
         filter_date = st.date_input("Data", value=date.today(), key="appt_list_date")
     with col2:
@@ -43,6 +54,14 @@ with tab_list:
             key="appt_list_collab",
         )
     with col3:
+        status_options = [("Tutti", None)] + [(label, key) for key, label in STATUS_LABELS.items()]
+        selected_status = st.selectbox(
+            "Stato",
+            options=status_options,
+            format_func=lambda item: item[0],
+            key="appt_list_status",
+        )
+    with col4:
         show_all_dates = st.checkbox("Tutte le date", value=False, key="appt_list_all")
 
     try:
@@ -51,6 +70,7 @@ with tab_list:
                 session,
                 date_filter=None if show_all_dates else filter_date,
                 collaborator_id=selected_collab[1],
+                status_filter=selected_status[1],
             )
     except Exception as exc:
         st.error(f"Errore nel recupero degli appuntamenti: {exc}")
@@ -65,7 +85,10 @@ with tab_list:
                 "Cliente": a.client.name if a.client else "-",
                 "Servizio": a.service.name if a.service else "-",
                 "Collaboratore": a.collaborator.name if a.collaborator else "-",
-                "Prezzo": float(a.service.price) if a.service else 0.0,
+                "Prezzo": float(a.price) if a.price is not None else (
+                    float(a.service.price) if a.service else 0.0
+                ),
+                "Stato": STATUS_LABELS.get(a.status, a.status),
                 "Note": a.notes or "",
             }
             for a in filtered
@@ -80,20 +103,94 @@ with tab_list:
             width="stretch",
         )
 
-        with st.expander("Elimina appuntamento"):
-            appt_to_delete = st.selectbox(
-                "Seleziona appuntamento da eliminare",
+        with st.expander("Gestisci appuntamento"):
+            appt_selected = st.selectbox(
+                "Seleziona appuntamento",
                 options=filtered,
                 format_func=lambda a: (
                     f"#{a.id} - {a.date} {a.time.strftime('%H:%M')} - "
-                    f"{a.client.name if a.client else '-'} ({a.service.name if a.service else '-'})"
+                    f"{a.client.name if a.client else '-'} ({a.service.name if a.service else '-'}) "
+                    f"[{STATUS_LABELS.get(a.status, a.status)}]"
                 ),
-                key="delete_appt_select",
+                key="manage_appt_select",
             )
-            if st.button("Elimina appuntamento", type="secondary"):
+            st.caption(f"Stato attuale: {STATUS_LABELS.get(appt_selected.status, appt_selected.status)}")
+
+            act_col1, act_col2, act_col3 = st.columns(3)
+            with act_col1:
+                if st.button("Completa", key="btn_complete", disabled=appt_selected.status in ("CANCELLED", "NO_SHOW")):
+                    try:
+                        with get_session() as session:
+                            result = complete_appointment(session, appt_selected.id)
+                        if result:
+                            st.success("Appuntamento completato.")
+                            st.rerun()
+                        else:
+                            st.warning("Impossibile completare l'appuntamento.")
+                    except Exception as exc:
+                        st.error(f"Errore: {exc}")
+            with act_col2:
+                if st.button("Annulla", key="btn_cancel", disabled=appt_selected.status in ("COMPLETED", "NO_SHOW")):
+                    try:
+                        with get_session() as session:
+                            ok = cancel_appointment(session, appt_selected.id)
+                        if ok:
+                            st.success("Appuntamento annullato.")
+                            st.rerun()
+                        else:
+                            st.warning("Impossibile annullare l'appuntamento.")
+                    except Exception as exc:
+                        st.error(f"Errore: {exc}")
+            with act_col3:
+                if st.button("Registra assente", key="btn_no_show", disabled=appt_selected.status in ("COMPLETED", "CANCELLED")):
+                    try:
+                        with get_session() as session:
+                            ok = register_no_show(session, appt_selected.id)
+                        if ok:
+                            st.success("Assenza registrata.")
+                            st.rerun()
+                        else:
+                            st.warning("Impossibile registrare l'assenza.")
+                    except Exception as exc:
+                        st.error(f"Errore: {exc}")
+
+            st.markdown("**Modifica appuntamento**")
+            with st.form(f"edit_appt_form_{appt_selected.id}"):
+                new_date = st.date_input("Nuova data", value=appt_selected.date, key="edit_date")
+                new_time = st.time_input("Nuovo orario", value=appt_selected.time, key="edit_time")
+                new_notes = st.text_area("Note", value=appt_selected.notes or "", key="edit_notes", height=70)
+                new_status = st.selectbox(
+                    "Stato",
+                    options=list(STATUS_LABELS.keys()),
+                    index=list(STATUS_LABELS.keys()).index(appt_selected.status),
+                    format_func=lambda k: STATUS_LABELS[k],
+                    key="edit_status",
+                )
+                save_edit = st.form_submit_button("Salva modifiche")
+                if save_edit:
+                    try:
+                        with get_session() as session:
+                            updated = update_appointment(
+                                session,
+                                appt_selected.id,
+                                date=new_date,
+                                time=new_time,
+                                notes=new_notes.strip() or None,
+                                status=new_status,
+                            )
+                        if updated:
+                            st.success("Appuntamento aggiornato.")
+                            st.rerun()
+                        else:
+                            st.warning("Appuntamento non trovato.")
+                    except Exception as exc:
+                        st.error(f"Errore durante la modifica: {exc}")
+
+            st.markdown("---")
+            if st.button("Elimina definitivamente", type="secondary", key="btn_delete"):
                 try:
                     with get_session() as session:
-                        deleted = delete_appointment(session, appt_to_delete.id)
+                        deleted = delete_appointment(session, appt_selected.id)
                     if deleted:
                         st.success("Appuntamento eliminato.")
                         st.rerun()
@@ -223,17 +320,6 @@ with tab_new:
             if submitted:
                 try:
                     with get_session() as session:
-                        # Controlli preliminari
-                        duration_minutes = selected_service.duration_minutes if selected_service else 60
-                        
-                        # Verifica disponibilità collaboratore
-                        if not is_collaborator_available(session, selected_collaborator.id, appt_date, appt_time):
-                            raise ValueError(f"Collaboratore non disponibile in data {appt_date} alle {appt_time.strftime('%H:%M')}")
-                        
-                        # Verifica conflitto appuntamento
-                        if check_appointment_conflict(session, selected_collaborator.id, appt_date, appt_time, duration_minutes):
-                            raise ValueError("Conflitto di orario: il collaboratore ha già un appuntamento in quel momento")
-                        
                         create_appointment(
                             session,
                             client_id=selected_client.id,

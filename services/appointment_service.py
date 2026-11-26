@@ -1,5 +1,5 @@
 from datetime import date, time, timedelta, datetime
-from sqlalchemy import select
+from sqlalchemy import select, case
 from sqlalchemy.orm import joinedload
 from models import Appointment, Service, Collaborator
 
@@ -69,29 +69,33 @@ def check_appointment_conflict(
 ) -> bool:
     """Controlla se c'è un conflitto di appuntamento per il collaboratore.
 
+    Solo gli appuntamenti in stato BOOKED interferiscono con la disponibilità.
+    Appuntamenti completati, cancellati o assenti non occupano il tempo.
+
     Restituisce True se c'è un conflitto, False se l'orario è libero.
     """
     # Calcola l'orario di fine appuntamento
     appt_end = datetime.combine(appt_date, appt_time) + timedelta(minutes=duration_minutes)
     appt_end_time = appt_end.time()
 
-    # Cerca appuntamenti in sovrapposizione per lo stesso collaboratore nello stesso giorno
+    # Cerca appuntamenti in stato BOOKED per il collaboratore nello stesso giorno
     stmt = (
         select(Appointment)
         .options(joinedload(Appointment.client), joinedload(Appointment.service))
         .where(Appointment.collaborator_id == collaborator_id)
         .where(Appointment.date == appt_date)
+        .where(Appointment.status == Appointment.STATUS_BOOKED)
         .order_by(Appointment.time)
     )
     appointments = list(session.execute(stmt).scalars().all())
 
-    # Controlla conflitti: l'orario nuovo deve non sovrapporsi a nessun appuntamento esistente
+    # Controlla conflitti: l'orario nuovo deve non sovrapporsi a nessun appuntamento BOOKED esistente
     for existing in appointments:
         existing_start_dt = datetime.combine(appt_date, existing.time)
-        # Calcola fine appuntamento esistente basata sulla durata del servizio
-        existing_duration = 60  # default 1 ora se non disponibile
-        if existing.service:
-            existing_duration = existing.service.duration_minutes
+        # Calcola fine appuntamento esistente basata sulla durata
+        existing_duration = existing.duration_minutes if existing.duration_minutes else (
+            existing.service.duration_minutes if existing.service else 60
+        )
         existing_end = existing_start_dt + timedelta(minutes=existing_duration)
 
         # Nuovo orario di inizio e fine
@@ -114,16 +118,17 @@ def create_appointment(
     appt_time: time,
     notes: str | None = None,
 ) -> Appointment:
-    # Ottiene la durata del servizio
+    # Ottiene la durata e il prezzo del servizio
     from models.service import Service as ServiceModel
     service = session.get(ServiceModel, service_id)
     duration_minutes = service.duration_minutes if service else 60
+    price = service.price if service else 0.0
 
     # 1. Verifica disponibilità del collaboratore
     if not is_collaborator_available(session, collaborator_id, appt_date, appt_time):
         raise ValueError(f"Collaboratore non disponibile in data {appt_date} alle {appt_time.strftime('%H:%M')}")
 
-    # 2. Verifica conflitto di appuntamento
+    # 2. Verifica conflitto di appuntamento (solo appuntamenti BOOKED)
     if check_appointment_conflict(session, collaborator_id, appt_date, appt_time, duration_minutes):
         raise ValueError("Conflitto di orario: il collaboratore ha già un appuntamento in quel momento")
 
@@ -134,6 +139,9 @@ def create_appointment(
         date=appt_date,
         time=appt_time,
         notes=notes,
+        status=Appointment.STATUS_BOOKED,
+        price=price,
+        duration_minutes=duration_minutes,
     )
     session.add(appointment)
     session.commit()
@@ -145,6 +153,7 @@ def get_appointments(
     session,
     date_filter: date | None = None,
     collaborator_id: int | None = None,
+    status_filter: str | None = None,
 ) -> list[Appointment]:
     stmt = (
         select(Appointment)
@@ -159,6 +168,8 @@ def get_appointments(
         stmt = stmt.where(Appointment.date == date_filter)
     if collaborator_id is not None:
         stmt = stmt.where(Appointment.collaborator_id == collaborator_id)
+    if status_filter is not None:
+        stmt = stmt.where(Appointment.status == status_filter)
     return list(session.execute(stmt).scalars().all())
 
 
@@ -167,6 +178,7 @@ def get_appointments_in_range(
     start_date: date,
     end_date: date,
     collaborator_id: int | None = None,
+    status_filter: str | None = None,
 ) -> list[Appointment]:
     stmt = (
         select(Appointment)
@@ -180,6 +192,8 @@ def get_appointments_in_range(
     )
     if collaborator_id is not None:
         stmt = stmt.where(Appointment.collaborator_id == collaborator_id)
+    if status_filter is not None:
+        stmt = stmt.where(Appointment.status == status_filter)
     return list(session.execute(stmt).scalars().all())
 
 
@@ -196,7 +210,100 @@ def get_appointment_by_id(session, appointment_id: int) -> Appointment | None:
     return session.execute(stmt).scalar_one_or_none()
 
 
+def update_appointment(
+    session,
+    appointment_id: int,
+    date: date | None = None,
+    time: time | None = None,
+    notes: str | None = None,
+    status: str | None = None,
+) -> Appointment | None:
+    """Modifica un appuntamento esistente."""
+    appointment = get_appointment_by_id(session, appointment_id)
+    if not appointment:
+        return None
+
+    if date is not None:
+        appointment.date = date
+    if time is not None:
+        appointment.time = time
+    if notes is not None:
+        appointment.notes = notes
+    if status is not None:
+        # Validare che lo stato sia uno stato valido
+        if status in Appointment.VALID_STATUSES:
+            appointment.status = status
+        else:
+            raise ValueError(f"Stato non valido: {status}")
+
+    session.commit()
+    session.refresh(appointment)
+    return appointment
+
+
+def cancel_appointment(session, appointment_id: int) -> bool:
+    """Annulla un appuntamento (stato CANCELLED)."""
+    appointment = get_appointment_by_id(session, appointment_id)
+    if not appointment:
+        return False
+
+    # Non si può annullare un appuntamento già completato o assente
+    if appointment.status in (Appointment.STATUS_COMPLETED, Appointment.STATUS_NO_SHOW):
+        return False
+
+    appointment.status = Appointment.STATUS_CANCELLED
+    session.commit()
+    return True
+
+
+def complete_appointment(
+    session,
+    appointment_id: int,
+    recorded_price: float | None = None,
+) -> Appointment | None:
+    """Completa un appuntamento (stato COMPLETED).
+
+    L'appuntamento completato conserva il prezzo e la durata originari
+    del servizio, anche se il servizio viene successivamente modificato.
+    """
+    appointment = get_appointment_by_id(session, appointment_id)
+    if not appointment:
+        return None
+
+    # Non si può completare un appuntamento già cancellato o assente
+    if appointment.status in (Appointment.STATUS_CANCELLED, Appointment.STATUS_NO_SHOW):
+        return None
+
+    # Conserva il prezzo originario: se non è stato registrato un prezzo specifico,
+    # usa il prezzo corrente del servizio (ma salvalo per riferimento futuro)
+    if recorded_price is not None:
+        appointment.price = recorded_price
+    elif appointment.service and appointment.price is None:
+        appointment.price = appointment.service.price
+
+    appointment.status = Appointment.STATUS_COMPLETED
+    session.commit()
+    session.refresh(appointment)
+    return appointment
+
+
+def register_no_show(session, appointment_id: int) -> bool:
+    """Registra che il cliente non si è presentato (stato NO_SHOW)."""
+    appointment = get_appointment_by_id(session, appointment_id)
+    if not appointment:
+        return False
+
+    # Non si può registrare NO_SHOW per un appuntamento già completato o cancellato
+    if appointment.status in (Appointment.STATUS_COMPLETED, Appointment.STATUS_CANCELLED):
+        return False
+
+    appointment.status = Appointment.STATUS_NO_SHOW
+    session.commit()
+    return True
+
+
 def delete_appointment(session, appointment_id: int) -> bool:
+    """Elimina fisicamente un appuntamento dal database."""
     appointment = get_appointment_by_id(session, appointment_id)
     if not appointment:
         return False
@@ -210,24 +317,59 @@ def get_appointments_by_date(session, appt_date: date) -> list[Appointment]:
 
 
 def get_revenue_summary(session) -> dict:
-    """Restituisce un dizionario con revenue di oggi e del mese."""
+    """Restituisce un dizionario con revenue di oggi e del mese.
+
+    Considera solo appuntamenti COMPLETED come incassi.
+    """
+    from sqlalchemy import func
     today = date.today()
     start_month = today.replace(day=1)
 
-    today_appointments = get_appointments_by_date(session, today)
-    today_revenue = sum(a.service.price for a in today_appointments if a.service)
+    # Incassi di oggi: solo appuntamenti completati
+    today_result = (
+        session.query(func.coalesce(func.sum(Appointment.price), 0))
+        .filter(
+            Appointment.date == today,
+            Appointment.status == Appointment.STATUS_COMPLETED,
+        )
+        .scalar()
+    )
+    today_revenue = float(today_result)
 
-    stmt = (
-        select(Appointment, Service)
-        .join(Service, Appointment.service_id == Service.id)
-        .where(Appointment.date >= start_month, Appointment.date <= today)
+    # Incassi mese: solo appuntamenti completati
+    month_result = (
+        session.query(func.coalesce(func.sum(Appointment.price), 0))
+        .filter(
+            Appointment.date >= start_month,
+            Appointment.date <= today,
+            Appointment.status == Appointment.STATUS_COMPLETED,
+        )
+        .scalar()
     )
-    month_revenue = sum(
-        service.price for _, service in session.execute(stmt).all()
+    month_revenue = float(month_result)
+
+    # Conteggio appuntamenti di oggi (tutti gli stati per il conteggio, ma revenue solo completati)
+    today_count_result = (
+        session.query(func.count(Appointment.id))
+        .filter(Appointment.date == today)
+        .scalar()
     )
+    today_count = today_count_result if today_count_result else 0
+
+    # Conteggio appuntamenti completati oggi
+    today_completed_count_result = (
+        session.query(func.count(Appointment.id))
+        .filter(
+            Appointment.date == today,
+            Appointment.status == Appointment.STATUS_COMPLETED,
+        )
+        .scalar()
+    )
+    today_completed_count = today_completed_count_result if today_completed_count_result else 0
 
     return {
-        "today": float(today_revenue),
-        "month": float(month_revenue),
-        "today_count": len(today_appointments),
+        "today": today_revenue,
+        "month": month_revenue,
+        "today_count": today_count,
+        "today_completed_count": today_completed_count,
     }

@@ -8,6 +8,10 @@ from services.appointment_service import (
     get_appointments_in_range,
     get_revenue_summary,
     is_collaborator_available,
+    complete_appointment,
+    cancel_appointment,
+    register_no_show,
+    update_appointment,
 )
 from services.client_service import create_client
 from services.collaborator_service import create_collaborator
@@ -155,8 +159,11 @@ class TestIncassi:
         client = create_client(db_session, "Cliente Test", "333000111")
 
         today = date.today()
-        create_appointment(db_session, client.id, s1.id, collab.id, today, time(10, 0))
-        create_appointment(db_session, client.id, s2.id, collab.id, today, time(11, 0))
+        appt1 = create_appointment(db_session, client.id, s1.id, collab.id, today, time(10, 0))
+        appt2 = create_appointment(db_session, client.id, s2.id, collab.id, today, time(11, 0))
+        # Completa gli appuntamenti per renderli incassi
+        complete_appointment(db_session, appt1.id)
+        complete_appointment(db_session, appt2.id)
 
         summary = get_revenue_summary(db_session)
         assert summary["today"] == 32.5
