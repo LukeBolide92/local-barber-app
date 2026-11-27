@@ -9,23 +9,20 @@ Progettato per funzionare interamente in locale su PC Windows senza servizi clou
 
 - **Dashboard (`pages/1_Dashboard.py`)**: riepilogo degli appuntamenti di oggi, numero appuntamenti e incassi giornalieri/mensili.
 - **Appuntamenti (`pages/2_Appuntamenti.py`)**:
-  - Elenco filtrabile per data e collaboratore con eliminazione appuntamenti.
+  - Elenco filtrabile per data, collaboratore e stato con visualizzazione importo pagato.
   - Calendario con vista giornaliera o settimanale.
   - Creazione nuovo appuntamento con controlli automatici di disponibilità collaboratore (stato attivo, giorni lavorativi, fascia oraria) e conflitti di orario.
   - Modifica: aggiornare data, orario, note, stato (BOOKED/COMPLETED/CANCELLED/NO_SHOW).
   - Annullamento: solo se non completato.
   - Registrazione assenza (NO_SHOW): solo se non completato.
   - Completamento: conserva prezzo e durata originari del servizio.
-- **Clienti**, **Servizi**, **Collaboratori**...
-  - Elenco filtrabile per data e collaboratore con eliminazione appuntamenti.
-  - Calendario con vista giornaliera o settimanale.
-  - Creazione nuovo appuntamento con controlli automatici di **disponibilità collaboratore** (stato attivo, giorni lavorativi, fascia oraria) e **conflitti di orario** in base alla durata del servizio.
+  - Pagamento: registrazione (solo per COMPLETED), rimborso (solo per COMPLETED), importo effettivamente incassato, data/ora pagamento, metodo (contanti/carta/altro).
 - **Clienti (`pages/3_Clienti.py`)**: ricerca per nome/telefono/email, inserimento, modifica ed eliminazione (con validazione di unicità del nome).
 - **Servizi (`pages/4_Servizi.py`)**: gestione listino servizi con durata in minuti e prezzo (con validazione di unicità del nome).
 - **Collaboratori (`pages/5_Collaboratori.py`)**: gestione ruoli, disponibilità, orari di turno e giorni lavorativi (con validazione di unicità del nome).
 - **Incassi (`pages/6_Incassi.py`)**: riepilogo e grafici degli incassi giornalieri (ultimi 7 giorni), mensili (ultimi 6 mesi) e per periodo (Settimana, Mese, Trimestre, Anno).
 - **Impostazioni e Backup (`pages/7_Impostazioni.py`)**:
-  - Stato e statistiche del database locale (`barber.db`).
+  - Stato e statistiche del database locale (`data/barber.db`).
   - Creazione di backup consistenti nella cartella `backups/`.
   - Download ed eliminazione dei backup salvati.
   - Ripristino sicuro da backup locale o da file `.db` caricato (con creazione automatica di un backup di sicurezza `barber_pre_restore_*.db` prima di sovrascrivere i dati).
@@ -66,7 +63,8 @@ local-barber-app/
 ├── app.py                        # Entry point e navigazione Streamlit
 ├── database.py                   # Configurazione SQLite e sessioni SQLAlchemy 2
 ├── requirements.txt              # Dipendenze Python
-├── barber.db                     # Database SQLite locale (creato automaticamente all'avvio)
+├── data/
+│   └── barber.db                 # Database SQLite locale (creato automaticamente all'avvio)
 ├── backups/                      # Cartella dei backup locali (.db)
 ├── models/                       # Modelli ORM SQLAlchemy
 │   ├── __init__.py
@@ -127,6 +125,28 @@ Ogni appuntamento ha uno stato:
 - `COMPLETED`: appuntamento completato
 - `CANCELLED`: annullato
 - `NO_SHOW`: cliente assente
+
+### Campi pagamenti (TASK 3)
+
+Ogni appuntamento può avere informazioni di pagamento:
+- `payment_status`: `UNPAID`, `PAID`, `REFUNDED` (default: `UNPAID`)
+- `amount_paid`: importo effettivamente incassato
+- `payment_datetime`: data e ora del pagamento
+- `payment_method`: contanti, carta, altro
+
+**Migrazione automatica**: All'avvio, se il database esistente non ha queste colonne, vengono aggiunte automaticamente e i dati vengono backfillati:
+- Appuntamenti `COMPLETED` → `payment_status=PAID`, `amount_paid=price`, `payment_method=Contanti`
+- Altri appuntamenti → `payment_status=UNPAID`, `amount_paid=0.0`
+
+### Logica automatica pagamenti (TASK 3)
+
+- **Completamento** (`complete_appointment`): quando l'appuntamento passa a `COMPLETED`, il pagamento viene impostato automaticamente come `PAID` (con `amount_paid`, `payment_datetime`, `payment_method`).
+- **Cambio stato**: se dall'`update_appointment` si imposta uno stato diverso da `COMPLETED` (es. `BOOKED`, `CANCELLED`, `NO_SHOW`), il pagamento torna automaticamente a `UNPAID` e i campi pagamento vengono resettati.
+
+### Incassi (TASK 3)
+
+Le funzioni di revenue (`get_revenue_summary`, `get_daily_revenue`, `get_monthly_revenue`, `get_period_revenue_total`) considerano come incassi **solo gli appuntamenti COMPLETED con pagamento PAID**. I rimborsi (REFUNDED) annullano l'incasso. Gli appuntamenti BOOKED/CANCELLED/NO_SHOW o pagati con UNPAID non contribuiscono agli incassi.
+
 3. Puoi scaricare il file `.db` su una chiavetta USB o altro disco usando **Scarica backup selezionato**.
 4. Per ripristinare i dati:
    - scegli un backup dall'elenco locale nella sezione **Ripristina dal backup selezionato**, oppure

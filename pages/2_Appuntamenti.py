@@ -14,6 +14,11 @@ from services.appointment_service import (
     complete_appointment,
     register_no_show,
 )
+from services.payment_service import (
+    register_payment,
+    register_refund,
+    get_payment_details,
+)
 from services.client_service import get_clients
 from services.collaborator_service import get_collaborators
 from services.service import get_services
@@ -89,6 +94,8 @@ with tab_list:
                     float(a.service.price) if a.service else 0.0
                 ),
                 "Stato": STATUS_LABELS.get(a.status, a.status),
+                "Pagamento": a.payment_status or "UNPAID",
+                "Importo pagato": float(a.amount_paid) if a.amount_paid is not None else 0.0,
                 "Note": a.notes or "",
             }
             for a in filtered
@@ -185,6 +192,53 @@ with tab_list:
                             st.warning("Appuntamento non trovato.")
                     except Exception as exc:
                         st.error(f"Errore durante la modifica: {exc}")
+
+            st.markdown("**Gestione pagamenti**")
+            current_payment = None
+            try:
+                with get_session() as session:
+                    current_payment = get_payment_details(session, appt_selected.id)
+            except Exception as exc:
+                st.error(f"Errore nel caricamento del pagamento: {exc}")
+                current_payment = None
+
+            pay_col1, pay_col2, pay_col3 = st.columns(3)
+            with pay_col1:
+                if st.button("Registra pagamento", key="btn_reg_payment", disabled=(appt_selected.status != "COMPLETED")):
+                    try:
+                        with get_session() as session:
+                            result = register_payment(
+                                session,
+                                appt_selected.id,
+                                amount=float(appt_selected.price or (appt_selected.service.price if appt_selected.service else 0.0)),
+                                method="Contanti",
+                            )
+                        if result:
+                            st.success("Pagamento registrato.")
+                            st.rerun()
+                        else:
+                            st.warning("Impossibile registrare il pagamento.")
+                    except Exception as exc:
+                        st.error(f"Errore: {exc}")
+            with pay_col2:
+                if st.button("Rendi rimborso", key="btn_reg_refund", disabled=(appt_selected.status != "COMPLETED" or current_payment is None or current_payment.get("payment_status") == "REFUNDED")):
+                    try:
+                        with get_session() as session:
+                            result = register_refund(session, appt_selected.id)
+                        if result:
+                            st.success("Rimborso registrato.")
+                            st.rerun()
+                        else:
+                            st.warning("Impossibile registrare il rimborso.")
+                    except Exception as exc:
+                        st.error(f"Errore: {exc}")
+            with pay_col3:
+                if current_payment:
+                    st.write(f"Stato pagamento: **{current_payment.get('payment_status')}**")
+                    st.write(f"Importo pagato: **€ {float(current_payment.get('amount_paid') or 0):.2f}**")
+                    st.write(f"Metodo: **{current_payment.get('payment_method')}**")
+                    if current_payment.get("payment_datetime"):
+                        st.write(f"Data/Ora: **{current_payment.get('payment_datetime')}**")
 
             st.markdown("---")
             if st.button("Elimina definitivamente", type="secondary", key="btn_delete"):

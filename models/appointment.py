@@ -1,5 +1,5 @@
-from datetime import date, time
-from sqlalchemy import String, ForeignKey, Date, Time, Integer, Float
+from datetime import date, time, datetime
+from sqlalchemy import String, ForeignKey, Date, Time, Integer, Float, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
 
@@ -19,6 +19,16 @@ class Appointment(Base):
         STATUS_NO_SHOW,
     )
 
+    # Stati del pagamento associato all'appuntamento
+    PAYMENT_UNPAID = "UNPAID"
+    PAYMENT_PAID = "PAID"
+    PAYMENT_REFUNDED = "REFUNDED"
+    VALID_PAYMENT_STATUSES = (
+        PAYMENT_UNPAID,
+        PAYMENT_PAID,
+        PAYMENT_REFUNDED,
+    )
+
     id: Mapped[int] = mapped_column(primary_key=True)
     client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"))
     service_id: Mapped[int] = mapped_column(ForeignKey("services.id"))
@@ -31,6 +41,14 @@ class Appointment(Base):
     status: Mapped[str] = mapped_column(
         String(20), default=STATUS_BOOKED, nullable=False
     )
+
+    # Pagamenti
+    payment_status: Mapped[str] = mapped_column(
+        String(10), default="UNPAID", nullable=False
+    )
+    amount_paid: Mapped[float | None] = mapped_column(Float, nullable=True)
+    payment_datetime: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    payment_method: Mapped[str] = mapped_column(String(50), nullable=True)
 
     # Valori originari del servizio al momento della prenotazione.
     # Vengono conservati anche se il servizio viene successivamente modificato.

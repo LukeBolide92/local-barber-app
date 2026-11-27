@@ -1,5 +1,5 @@
 from datetime import date, time, timedelta, datetime
-from sqlalchemy import select, case
+from sqlalchemy import select, case, func
 from sqlalchemy.orm import joinedload
 from models import Appointment, Service, Collaborator
 
@@ -233,6 +233,12 @@ def update_appointment(
         # Validare che lo stato sia uno stato valido
         if status in Appointment.VALID_STATUSES:
             appointment.status = status
+            # TASK 3: se lo stato non è COMPLETED, il pagamento torna a UNPAID
+            if status != Appointment.STATUS_COMPLETED:
+                appointment.payment_status = Appointment.PAYMENT_UNPAID
+                appointment.amount_paid = 0.0
+                appointment.payment_datetime = None
+                appointment.payment_method = None
         else:
             raise ValueError(f"Stato non valido: {status}")
 
@@ -252,6 +258,11 @@ def cancel_appointment(session, appointment_id: int) -> bool:
         return False
 
     appointment.status = Appointment.STATUS_CANCELLED
+    # TASK 3: annullato -> pagamento torna a UNPAID
+    appointment.payment_status = Appointment.PAYMENT_UNPAID
+    appointment.amount_paid = 0.0
+    appointment.payment_datetime = None
+    appointment.payment_method = None
     session.commit()
     return True
 
@@ -282,6 +293,18 @@ def complete_appointment(
         appointment.price = appointment.service.price
 
     appointment.status = Appointment.STATUS_COMPLETED
+    # TASK 3: completare un appuntamento comporta automaticamente il pagamento PAID
+    appointment.payment_status = Appointment.PAYMENT_PAID
+    if recorded_price is not None:
+        appointment.amount_paid = recorded_price
+    elif appointment.amount_paid is None or float(appointment.amount_paid) == 0.0:
+        appointment.amount_paid = appointment.price if appointment.price else (
+            appointment.service.price if appointment.service else 0.0
+        )
+    appointment.payment_datetime = appointment.payment_datetime or datetime.now()
+    if not appointment.payment_method:
+        appointment.payment_method = "Contanti"
+
     session.commit()
     session.refresh(appointment)
     return appointment
@@ -298,6 +321,11 @@ def register_no_show(session, appointment_id: int) -> bool:
         return False
 
     appointment.status = Appointment.STATUS_NO_SHOW
+    # TASK 3: assente -> pagamento torna a UNPAID
+    appointment.payment_status = Appointment.PAYMENT_UNPAID
+    appointment.amount_paid = 0.0
+    appointment.payment_datetime = None
+    appointment.payment_method = None
     session.commit()
     return True
 
@@ -316,47 +344,69 @@ def get_appointments_by_date(session, appt_date: date) -> list[Appointment]:
     return get_appointments(session, date_filter=appt_date)
 
 
+def get_appointment_net_revenue(appointment: Appointment) -> float:
+    """Calcola l'importo netto di incasso per un singolo appuntamento.
+
+    Regole TASK 3:
+    - Solo appuntamenti COMPLETED generano incassi.
+    - Solo pagamenti PAID generano incassi (UNPAID non incassa).
+    - I rimborsi (REFUNDED) annullano l'incasso: il netto diventa 0.
+    """
+    if appointment.status != Appointment.STATUS_COMPLETED:
+        return 0.0
+    if appointment.payment_status == Appointment.PAYMENT_REFUNDED:
+        # Il rimborso annulla l'incasso: netto = 0
+        return 0.0
+    if appointment.payment_status == Appointment.PAYMENT_PAID:
+        # Incasso effettivamente registrato e pagato
+        return float(appointment.amount_paid or 0.0)
+    # UNPAID: nessun incasso registrato
+    return 0.0
+
+
+def get_revenue_between(session, start_date, end_date) -> float:
+    """Restituisce l'incasso netto (incassi meno rimborsi) per un intervallo di date."""
+    from sqlalchemy import func
+    stmt = (
+        select(Appointment)
+        .where(
+            Appointment.date >= start_date,
+            Appointment.date <= end_date,
+            Appointment.status == Appointment.STATUS_COMPLETED,
+        )
+    )
+    appointments = list(session.execute(stmt).scalars().all())
+    return round(sum(get_appointment_net_revenue(a) for a in appointments), 2)
+
+
 def get_revenue_summary(session) -> dict:
     """Restituisce un dizionario con revenue di oggi e del mese.
 
-    Considera solo appuntamenti COMPLETED come incassi.
+    TASK 3: considera solo appuntamenti COMPLETED con pagamento PAID come incassi.
+    Gestisce i rimborsi (REFUNDED) sottraendo gli importi rimborsati.
     """
-    from sqlalchemy import func
     today = date.today()
     start_month = today.replace(day=1)
 
-    # Incassi di oggi: solo appuntamenti completati
-    today_result = (
-        session.query(func.coalesce(func.sum(Appointment.price), 0))
+    # Incassi di oggi: solo appuntamenti completati e pagati
+    today_revenue = get_revenue_between(session, today, today)
+
+    # Incassi mese: solo appuntamenti completati e pagati nel mese corrente
+    month_revenue = get_revenue_between(session, start_month, today)
+
+    # Conteggio appuntamenti di oggi pagati (completati e pagati)
+    today_count_result = (
+        session.query(func.count(Appointment.id))
         .filter(
             Appointment.date == today,
             Appointment.status == Appointment.STATUS_COMPLETED,
+            Appointment.payment_status == Appointment.PAYMENT_PAID,
         )
-        .scalar()
-    )
-    today_revenue = float(today_result)
-
-    # Incassi mese: solo appuntamenti completati
-    month_result = (
-        session.query(func.coalesce(func.sum(Appointment.price), 0))
-        .filter(
-            Appointment.date >= start_month,
-            Appointment.date <= today,
-            Appointment.status == Appointment.STATUS_COMPLETED,
-        )
-        .scalar()
-    )
-    month_revenue = float(month_result)
-
-    # Conteggio appuntamenti di oggi (tutti gli stati per il conteggio, ma revenue solo completati)
-    today_count_result = (
-        session.query(func.count(Appointment.id))
-        .filter(Appointment.date == today)
         .scalar()
     )
     today_count = today_count_result if today_count_result else 0
 
-    # Conteggio appuntamenti completati oggi
+    # Conteggio appuntamenti completati oggi (tutti, anche non pagati)
     today_completed_count_result = (
         session.query(func.count(Appointment.id))
         .filter(

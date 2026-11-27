@@ -2,30 +2,42 @@ from datetime import date, timedelta
 from collections import defaultdict
 from sqlalchemy import select
 from models import Appointment, Service
-from services.appointment_service import get_revenue_summary
+from services.appointment_service import get_revenue_between, get_appointment_net_revenue
 
 
 def get_revenue_today(session) -> float:
-    return get_revenue_summary(session)["today"]
+    return get_revenue_between(session, date.today(), date.today())
 
 
 def get_revenue_month(session) -> float:
-    return get_revenue_summary(session)["month"]
+    today = date.today()
+    start_month = today.replace(day=1)
+    return get_revenue_between(session, start_month, today)
 
 
 def get_daily_revenue(session, days: int = 7) -> list[dict]:
-    """Restituisce gli incassi giornalieri per gli ultimi `days` giorni."""
+    """Restituisce gli incassi giornalieri per gli ultimi `days` giorni.
+
+    TASK 3: considera solo appuntamenti COMPLETED con pagamento PAID come incassi,
+    gestendo i rimborsi (REFUNDED) sottraendo gli importi rimborsati.
+    """
     today = date.today()
     start_date = today - timedelta(days=days - 1)
 
+    revenues = {}
     stmt = (
-        select(Appointment.date, Service.price)
-        .join(Service, Appointment.service_id == Service.id)
-        .where(Appointment.date >= start_date, Appointment.date <= today)
+        select(Appointment)
+        .where(
+            Appointment.date >= start_date,
+            Appointment.date <= today,
+            Appointment.status == Appointment.STATUS_COMPLETED,
+        )
     )
+    appointments = list(session.execute(stmt).scalars().all())
+
     totals = defaultdict(float)
-    for appt_date, price in session.execute(stmt).all():
-        totals[appt_date] += float(price)
+    for appt in appointments:
+        totals[appt.date] += get_appointment_net_revenue(appt)
 
     return [
         {
@@ -39,7 +51,6 @@ def get_daily_revenue(session, days: int = 7) -> list[dict]:
 def get_monthly_revenue(session, months: int = 12) -> list[dict]:
     """Restituisce gli incassi aggregati per mese dal database."""
     today = date.today()
-    # Calculate start month roughly `months - 1` months back
     year = today.year
     month = today.month - (months - 1)
     while month <= 0:
@@ -48,14 +59,19 @@ def get_monthly_revenue(session, months: int = 12) -> list[dict]:
     start_date = date(year, month, 1)
 
     stmt = (
-        select(Appointment.date, Service.price)
-        .join(Service, Appointment.service_id == Service.id)
-        .where(Appointment.date >= start_date, Appointment.date <= today)
+        select(Appointment)
+        .where(
+            Appointment.date >= start_date,
+            Appointment.date <= today,
+            Appointment.status == Appointment.STATUS_COMPLETED,
+        )
     )
+    appointments = list(session.execute(stmt).scalars().all())
+
     totals = defaultdict(float)
-    for appt_date, price in session.execute(stmt).all():
-        key = (appt_date.year, appt_date.month)
-        totals[key] += float(price)
+    for appt in appointments:
+        key = (appt.date.year, appt.date.month)
+        totals[key] += get_appointment_net_revenue(appt)
 
     month_names = [
         "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
@@ -68,7 +84,7 @@ def get_monthly_revenue(session, months: int = 12) -> list[dict]:
         label = f"{month_names[cur_m - 1]} {cur_y}"
         result.append({
             "month": label,
-            "revenue": round(totals[(cur_y, cur_m)], 2),
+            "revenue": round(totals.get((cur_y, cur_m), 0.0), 2),
         })
         cur_m += 1
         if cur_m > 12:
@@ -79,7 +95,10 @@ def get_monthly_revenue(session, months: int = 12) -> list[dict]:
 
 
 def get_period_revenue_total(session, period: str) -> tuple[float, int]:
-    """Restituisce (incasso totale, numero appuntamenti) per il periodo selezionato."""
+    """Restituisce (incasso totale, numero appuntamenti) per il periodo selezionato.
+
+    TASK 3: considera solo appuntamenti COMPLETED con pagamento PAID come incassi.
+    """
     today = date.today()
     if period == "Settimana":
         start_date = today - timedelta(days=6)
@@ -90,11 +109,20 @@ def get_period_revenue_total(session, period: str) -> tuple[float, int]:
     else:  # Anno
         start_date = today.replace(month=1, day=1)
 
-    stmt = (
-        select(Service.price)
-        .select_from(Appointment)
-        .join(Service, Appointment.service_id == Service.id)
-        .where(Appointment.date >= start_date, Appointment.date <= today)
+    total = get_revenue_between(session, start_date, today)
+
+    # Conta gli appuntamenti completati e pagati come servizi effettivamente incassati
+    from sqlalchemy import func
+    paid_count_result = (
+        session.query(func.count(Appointment.id))
+        .filter(
+            Appointment.date >= start_date,
+            Appointment.date <= today,
+            Appointment.status == Appointment.STATUS_COMPLETED,
+            Appointment.payment_status == Appointment.PAYMENT_PAID,
+        )
+        .scalar()
     )
-    prices = [float(row[0]) for row in session.execute(stmt).all()]
-    return round(sum(prices), 2), len(prices)
+    paid_count = paid_count_result if paid_count_result else 0
+
+    return round(float(total), 2), paid_count
