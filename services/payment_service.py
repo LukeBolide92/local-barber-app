@@ -4,18 +4,8 @@ from models import Appointment
 from services.appointment_service import complete_appointment, get_appointment_by_id
 
 
-def register_payment(
-    session: Session,
-    appointment_id: int,
-    amount: float,
-    method: str,
-    payment_datetime: datetime | None = None,
-) -> Appointment | None:
-    """Registra un pagamento per un appuntamento completato."""
-    appointment = get_appointment_by_id(session, appointment_id)
-    if not appointment:
-        return None
-
+def _validate_payment_for_registration(appointment: Appointment, amount: float) -> None:
+    """Validazioni comuni per la registrazione di un pagamento (sul livello ORM, senza commit)."""
     # Consenti il pagamento solo se l'appuntamento è COMPLETED
     if appointment.status != Appointment.STATUS_COMPLETED:
         raise ValueError(f"Pagamento non consentito: stato '{appointment.status}'")
@@ -28,6 +18,21 @@ def register_payment(
         raise ValueError("Pagamento già registrato per questo appuntamento")
     if appointment.payment_status == Appointment.PAYMENT_REFUNDED:
         raise ValueError("Impossibile registrare un pagamento per un appuntamento rimborsato")
+
+
+def register_payment(
+    session: Session,
+    appointment_id: int,
+    amount: float,
+    method: str,
+    payment_datetime: datetime | None = None,
+) -> Appointment | None:
+    """Registra un pagamento per un appuntamento completato."""
+    appointment = get_appointment_by_id(session, appointment_id)
+    if not appointment:
+        return None
+
+    _validate_payment_for_registration(appointment, amount)
 
     # Registra il pagamento
     appointment.payment_status = Appointment.PAYMENT_PAID
@@ -49,13 +54,32 @@ def complete_appointment_and_register_quick_payment(
 ) -> Appointment | None:
     """Operazione rapida: completa l'appuntamento e registra contestivamente il pagamento (es. contanti).
 
-    Utilizza le funzioni applicative esistenti (complete_appointment + register_payment)
-    per evitare duplicazione della logica.
+    TASK 4 (FASE 4.2): l'operazione è ATOMA - completamento e registrazione avvengono
+    nella stessa transazione senza commit intermedi: in caso di errore nessun commit viene
+    eseguito e il completamento viene annullato insieme al pagamento.
     """
-    appointment = complete_appointment(session, appointment_id)
-    if appointment is None:
+    appointment = get_appointment_by_id(session, appointment_id)
+    if not appointment:
         return None
-    return register_payment(session, appointment_id, amount=amount, method=method, payment_datetime=payment_datetime)
+
+    # Completamento dell'appuntamento
+    if appointment.status in (Appointment.STATUS_CANCELLED, Appointment.STATUS_NO_SHOW):
+        return None
+    if appointment.service and appointment.price is None:
+        appointment.price = appointment.service.price
+    appointment.status = Appointment.STATUS_COMPLETED
+
+    # Registrazione del pagamento contestiva al completamento
+    _validate_payment_for_registration(appointment, amount)
+    appointment.payment_status = Appointment.PAYMENT_PAID
+    appointment.amount_paid = amount
+    appointment.payment_datetime = payment_datetime or datetime.now()
+    appointment.payment_method = method.strip()
+
+    # Transazione unica per completamento + pagamento
+    session.commit()
+    session.refresh(appointment)
+    return appointment
 
 
 def register_refund(
