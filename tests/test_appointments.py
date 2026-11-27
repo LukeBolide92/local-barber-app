@@ -17,6 +17,7 @@ from services.payment_service import (
     register_payment,
     register_refund,
     get_payment_details,
+    complete_appointment_and_register_quick_payment,
 )
 from services.client_service import create_client
 from services.collaborator_service import create_collaborator
@@ -230,7 +231,119 @@ class TestPagamenti:
         assert details["payment_status"] == "PAID"
         assert details["amount_paid"] == 20.0
 
-    def test_complete_appointment_auto_sets_paid(self, db_session):
+    def test_complete_then_register_payment(self, db_session):
+        """TASK 2: completamento senza pagamento automatico + registrazione successiva del pagamento."""
+        collab = create_collaborator(
+            db_session,
+            "Mario",
+            "Barbiere",
+            True,
+            time(8, 0),
+            time(20, 0),
+            ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"],
+        )
+        s1 = create_service(db_session, "Taglio", 30, 20.0)
+        client = create_client(db_session, "Cliente Test", "333000111")
+
+        today = date.today()
+        appt = create_appointment(db_session, client.id, s1.id, collab.id, today, time(10, 0))
+        completed = complete_appointment(db_session, appt.id, recorded_price=20.0)
+        assert completed.status == "COMPLETED"
+        assert completed.payment_status == "UNPAID"
+
+        # Pagamento successivo al completamento
+        paid = register_payment(db_session, appt.id, amount=20.0, method="Contanti")
+        assert paid.payment_status == "PAID"
+        assert paid.amount_paid == 20.0
+
+    def test_register_payment_rejected_for_uncompleted_appointment(self, db_session):
+        """TASK 2: il pagamento è consentito solo per appuntamenti COMPLETED."""
+        collab = create_collaborator(
+            db_session,
+            "Mario",
+            "Barbiere",
+            True,
+            time(8, 0),
+            time(20, 0),
+            ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"],
+        )
+        s1 = create_service(db_session, "Taglio", 30, 20.0)
+        client = create_client(db_session, "Cliente Test", "333000111")
+
+        today = date.today()
+        appt = create_appointment(db_session, client.id, s1.id, collab.id, today, time(10, 0))
+        with pytest.raises(ValueError, match="stato"):
+            register_payment(db_session, appt.id, amount=20.0, method="Contanti")
+
+    def test_double_payment_rejected(self, db_session):
+        """TASK 2: non è possibile registrare due pagamenti per lo stesso appuntamento."""
+        collab = create_collaborator(
+            db_session,
+            "Mario",
+            "Barbiere",
+            True,
+            time(8, 0),
+            time(20, 0),
+            ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"],
+        )
+        s1 = create_service(db_session, "Taglio", 30, 20.0)
+        client = create_client(db_session, "Cliente Test", "333000111")
+
+        today = date.today()
+        appt = create_appointment(db_session, client.id, s1.id, collab.id, today, time(10, 0))
+        complete_appointment(db_session, appt.id)
+        register_payment(db_session, appt.id, amount=20.0, method="Contanti")
+        with pytest.raises(ValueError, match="già"):
+            register_payment(db_session, appt.id, amount=20.0, method="Contanti")
+
+    def test_register_payment_rejected_after_refund(self, db_session):
+        """TASK 2: non è possibile registrare un pagamento per un appuntamento rimborsato."""
+        collab = create_collaborator(
+            db_session,
+            "Mario",
+            "Barbiere",
+            True,
+            time(8, 0),
+            time(20, 0),
+            ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"],
+        )
+        s1 = create_service(db_session, "Taglio", 30, 20.0)
+        client = create_client(db_session, "Cliente Test", "333000111")
+
+        today = date.today()
+        appt = create_appointment(db_session, client.id, s1.id, collab.id, today, time(10, 0))
+        complete_appointment(db_session, appt.id)
+        register_payment(db_session, appt.id, amount=20.0, method="Contanti")
+        register_refund(db_session, appt.id)
+        with pytest.raises(ValueError, match="rimborsato"):
+            register_payment(db_session, appt.id, amount=20.0, method="Contanti")
+
+    def test_quick_complete_and_register_payment(self, db_session):
+        """TASK 2: operazione rapida completa + registra contestivamente il pagamento in contanti."""
+        collab = create_collaborator(
+            db_session,
+            "Mario",
+            "Barbiere",
+            True,
+            time(8, 0),
+            time(20, 0),
+            ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"],
+        )
+        s1 = create_service(db_session, "Taglio", 30, 20.0)
+        client = create_client(db_session, "Cliente Test", "333000111")
+
+        today = date.today()
+        appt = create_appointment(db_session, client.id, s1.id, collab.id, today, time(10, 0))
+        result = complete_appointment_and_register_quick_payment(
+            db_session, appt.id, amount=20.0, method="Contanti"
+        )
+        assert result is not None
+        assert result.status == "COMPLETED"
+        assert result.payment_status == "PAID"
+        assert result.amount_paid == 20.0
+        assert result.payment_method == "Contanti"
+
+    def test_complete_appointment_does_not_register_payment(self, db_session):
         collab = create_collaborator(
             db_session,
             "Mario",
@@ -249,10 +362,9 @@ class TestPagamenti:
 
         completed = complete_appointment(db_session, appt.id, recorded_price=20.0)
         assert completed.status == "COMPLETED"
-        # Completamento -> automaticamente PAID
-        assert completed.payment_status == "PAID"
-        assert completed.amount_paid == 20.0
-        assert completed.payment_method == "Contanti"
+        # TASK 2: il completamento non registra automaticamente il pagamento
+        assert completed.payment_status == "UNPAID"
+        assert completed.amount_paid is None
 
     def test_status_change_to_non_completed_resets_unpaid(self, db_session):
         collab = create_collaborator(
@@ -270,7 +382,7 @@ class TestPagamenti:
         today = date.today()
         appt = create_appointment(db_session, client.id, s1.id, collab.id, today, time(10, 0))
         complete_appointment(db_session, appt.id, recorded_price=20.0)
-        assert appt.payment_status == "PAID"
+        assert appt.payment_status == "UNPAID"
 
         # Cambio stato in CANCELLED -> pagamento torna a UNPAID
         updated = update_appointment(db_session, appt.id, status="CANCELLED")

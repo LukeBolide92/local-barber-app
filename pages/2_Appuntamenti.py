@@ -11,13 +11,13 @@ from services.appointment_service import (
     check_appointment_conflict,
     update_appointment,
     cancel_appointment,
-    complete_appointment,
     register_no_show,
 )
 from services.payment_service import (
     register_payment,
     register_refund,
     get_payment_details,
+    complete_appointment_and_register_quick_payment,
 )
 from services.client_service import get_clients
 from services.collaborator_service import get_collaborators
@@ -152,19 +152,12 @@ with tab_list:
                     if submit_complete:
                         try:
                             with get_session() as session:
-                                result = complete_appointment(
+                                result = complete_appointment_and_register_quick_payment(
                                     session,
                                     appt_selected.id,
-                                    recorded_price=paid_amount if paid_amount > 0 else default_amount,
+                                    amount=float(paid_amount) if paid_amount > 0 else default_amount,
+                                    method=pay_method,
                                 )
-                                if result:
-                                    # Conferma esplicita del pagamento
-                                    register_payment(
-                                        session,
-                                        appt_selected.id,
-                                        amount=float(result.price) if result.price is not None else default_amount,
-                                        method=pay_method,
-                                    )
                             if result:
                                 st.success("Appuntamento completato e pagamento confermato.")
                                 st.rerun()

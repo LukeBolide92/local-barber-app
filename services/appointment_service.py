@@ -293,17 +293,8 @@ def complete_appointment(
         appointment.price = appointment.service.price
 
     appointment.status = Appointment.STATUS_COMPLETED
-    # TASK 3: completare un appuntamento comporta automaticamente il pagamento PAID
-    appointment.payment_status = Appointment.PAYMENT_PAID
-    if recorded_price is not None:
-        appointment.amount_paid = recorded_price
-    elif appointment.amount_paid is None or float(appointment.amount_paid) == 0.0:
-        appointment.amount_paid = appointment.price if appointment.price else (
-            appointment.service.price if appointment.service else 0.0
-        )
-    appointment.payment_datetime = appointment.payment_datetime or datetime.now()
-    if not appointment.payment_method:
-        appointment.payment_method = "Contanti"
+    # TASK 2: separazione completamento/pagamento - il completamento non registra automaticamente il pagamento.
+    # I dati economici non vengono modificati qui: il pagamento va registrato tramite register_payment (o l'operazione rapida).
 
     session.commit()
     session.refresh(appointment)

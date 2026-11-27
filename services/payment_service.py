@@ -1,7 +1,7 @@
 from datetime import datetime
 from sqlalchemy.orm import Session
 from models import Appointment
-from services.appointment_service import get_appointment_by_id
+from services.appointment_service import complete_appointment, get_appointment_by_id
 
 
 def register_payment(
@@ -23,6 +23,12 @@ def register_payment(
     if amount <= 0:
         raise ValueError("L'importo deve essere positivo")
 
+    # TASK 2: non è possibile registrare un pagamento se l'appuntamento è già pagato o rimborsato
+    if appointment.payment_status == Appointment.PAYMENT_PAID:
+        raise ValueError("Pagamento già registrato per questo appuntamento")
+    if appointment.payment_status == Appointment.PAYMENT_REFUNDED:
+        raise ValueError("Impossibile registrare un pagamento per un appuntamento rimborsato")
+
     # Registra il pagamento
     appointment.payment_status = Appointment.PAYMENT_PAID
     appointment.amount_paid = amount
@@ -32,6 +38,24 @@ def register_payment(
     session.commit()
     session.refresh(appointment)
     return appointment
+
+
+def complete_appointment_and_register_quick_payment(
+    session: Session,
+    appointment_id: int,
+    amount: float,
+    method: str,
+    payment_datetime: datetime | None = None,
+) -> Appointment | None:
+    """Operazione rapida: completa l'appuntamento e registra contestivamente il pagamento (es. contanti).
+
+    Utilizza le funzioni applicative esistenti (complete_appointment + register_payment)
+    per evitare duplicazione della logica.
+    """
+    appointment = complete_appointment(session, appointment_id)
+    if appointment is None:
+        return None
+    return register_payment(session, appointment_id, amount=amount, method=method, payment_datetime=payment_datetime)
 
 
 def register_refund(
