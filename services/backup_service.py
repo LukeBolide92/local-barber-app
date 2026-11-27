@@ -2,7 +2,7 @@ from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 import sqlite3
-from database import DB_PATH, engine
+from db.database import DB_PATH, engine
 
 DEFAULT_BACKUP_DIR = Path("backups")
 REQUIRED_TABLES = {"clients", "services", "collaborators", "appointments"}

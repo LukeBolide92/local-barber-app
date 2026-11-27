@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from database import Base, get_session
+from db.database import Base, get_session
 from models import Appointment, Client, Collaborator, Service  # noqa: F401
 from services.appointment_service import (
     get_appointment_by_id,

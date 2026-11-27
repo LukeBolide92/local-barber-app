@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from database import Base
+from db.database import Base
 from models import Appointment, Client, Collaborator, Service  # noqa: F401
 
 

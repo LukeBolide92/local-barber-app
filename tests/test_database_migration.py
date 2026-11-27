@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine, inspect as sa_inspect, text
 from sqlalchemy.orm import sessionmaker
 
-from database import Base, _add_payment_columns_if_missing
+from db.database import Base, _add_payment_columns_if_missing
 from models import Appointment  # noqa: F401
 
 

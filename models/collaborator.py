@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import String, Integer, Time
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from database import Base
+from db.database import Base
 
 if TYPE_CHECKING:
     from models.appointment import Appointment
