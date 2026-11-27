@@ -240,6 +240,15 @@ def update_appointment(
     if status is not None:
         # Validare che lo stato sia uno stato valido
         if status in Appointment.VALID_STATUSES:
+            # TASK 3 (FASE 4.2): un appuntamento pagato non può essere riportato
+            # a uno stato diverso da COMPLETED: la modifica incompatibile con un
+            # pagamento registrato va rifiutata; il rimborso va gestito esplicitamente
+            # tramite il servizio pagamenti.
+            if appointment.payment_status == Appointment.PAYMENT_PAID and status != Appointment.STATUS_COMPLETED:
+                raise ValueError(
+                    "Impossibile modificare lo stato di un appuntamento pagato: "
+                    "effettuare un rimborso esplicito tramite il servizio pagamenti"
+                )
             appointment.status = status
             # TASK 3: se lo stato non è COMPLETED, il pagamento torna a UNPAID
             if status != Appointment.STATUS_COMPLETED:

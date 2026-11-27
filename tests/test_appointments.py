@@ -454,6 +454,52 @@ class TestPagamenti:
         assert updated2.status == "BOOKED"
         assert updated2.payment_status == "UNPAID"
 
+    def test_update_paid_appointment_status_change_rejected(self, db_session):
+        """TASK 3 (FASE 4.2): non si può modificare lo stato di un appuntamento pagato."""
+        collab = create_collaborator(
+            db_session,
+            "Mario",
+            "Barbiere",
+            True,
+            time(8, 0),
+            time(20, 0),
+            ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"],
+        )
+        s1 = create_service(db_session, "Taglio", 30, 20.0)
+        client = create_client(db_session, "Cliente Test", "333000111")
+
+        today = date.today()
+        appt = create_appointment(db_session, client.id, s1.id, collab.id, today, time(10, 0))
+        complete_appointment(db_session, appt.id)
+        register_payment(db_session, appt.id, amount=20.0, method="Contanti")
+
+        # Un appuntamento pagato non può essere riportato a uno stato incompleto
+        with pytest.raises(ValueError, match="pagato"):
+            update_appointment(db_session, appt.id, status="CANCELLED")
+
+    def test_update_paid_appointment_preserves_payment_status(self, db_session):
+        """TASK 3 (FASE 4.2): modifica ordinaria di un appuntamento pagato -> pagamento invariato."""
+        collab = create_collaborator(
+            db_session,
+            "Mario",
+            "Barbiere",
+            True,
+            time(8, 0),
+            time(20, 0),
+            ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"],
+        )
+        s1 = create_service(db_session, "Taglio", 30, 20.0)
+        client = create_client(db_session, "Cliente Test", "333000111")
+
+        today = date.today()
+        appt = create_appointment(db_session, client.id, s1.id, collab.id, today, time(10, 0))
+        complete_appointment(db_session, appt.id)
+        register_payment(db_session, appt.id, amount=20.0, method="Contanti")
+
+        updated = update_appointment(db_session, appt.id, notes="Cliente richiede ritocco")
+        assert updated.payment_status == "PAID"
+        assert updated.amount_paid == 20.0
+
     def test_refund_only_after_completed(self, db_session):
         collab = create_collaborator(
             db_session,
