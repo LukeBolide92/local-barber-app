@@ -26,6 +26,9 @@ from services.revenue_service import (
     get_period_revenue_total,
     get_revenue_month,
     get_revenue_today,
+    get_top_services,
+    get_pending_payments,
+    get_refunds,
 )
 from services.service import create_service
 
@@ -307,3 +310,90 @@ class TestPagamenti:
         assert get_revenue_today(db_session) == 0.0
         daily = get_daily_revenue(db_session, days=7)
         assert daily[-1]["revenue"] == 0.0
+
+
+class TestIncassiAggiuntivi:
+    def test_top_services_returns_highest_count(self, db_session):
+        collab = create_collaborator(
+            db_session,
+            "Mario",
+            "Barbiere",
+            True,
+            time(8, 0),
+            time(20, 0),
+            ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"],
+        )
+        s1 = create_service(db_session, "Taglio", 30, 20.0)
+        s2 = create_service(db_session, "Barba", 20, 12.5)
+        client = create_client(db_session, "Cliente Test", "333000111")
+
+        today = date.today()
+        # Taglio: 2 servizi completati e pagati; Barba: 1 servizio completato e pagato
+        appt1 = create_appointment(db_session, client.id, s1.id, collab.id, today, time(10, 0))
+        appt2 = create_appointment(db_session, client.id, s1.id, collab.id, today, time(11, 0))
+        appt3 = create_appointment(db_session, client.id, s2.id, collab.id, today, time(12, 0))
+        complete_appointment(db_session, appt1.id)
+        complete_appointment(db_session, appt2.id)
+        complete_appointment(db_session, appt3.id)
+        register_payment(db_session, appt1.id, amount=20.0, method="Contanti")
+        register_payment(db_session, appt2.id, amount=20.0, method="Contanti")
+        register_payment(db_session, appt3.id, amount=12.5, method="Carta")
+
+        top = get_top_services(db_session, period="Mese", limit=5)
+        assert len(top) == 2
+        # Taglio è il servizio più venduto (2 servizi)
+        assert top[0]["service_name"] == "Taglio"
+        assert top[0]["count"] == 2
+        assert top[0]["revenue"] == 40.0
+        # Barba è secondo (1 servizio)
+        assert top[1]["service_name"] == "Barba"
+        assert top[1]["count"] == 1
+        assert top[1]["revenue"] == 12.5
+
+    def test_get_pending_payments_only_unpaid_completed(self, db_session):
+        collab = create_collaborator(
+            db_session,
+            "Mario",
+            "Barbiere",
+            True,
+            time(8, 0),
+            time(20, 0),
+            ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"],
+        )
+        s1 = create_service(db_session, "Taglio", 30, 20.0)
+        client = create_client(db_session, "Cliente Test", "333000111")
+
+        today = date.today()
+        appt1 = create_appointment(db_session, client.id, s1.id, collab.id, today, time(10, 0))
+        appt2 = create_appointment(db_session, client.id, s1.id, collab.id, today, time(11, 0))
+        # Completa -> l'auto-PAID imposta il pagamento
+        complete_appointment(db_session, appt1.id)
+        complete_appointment(db_session, appt2.id)
+        # Simula un pagamento completato ma non ancora registrato (UNPAID)
+        appt1.payment_status = "UNPAID"
+        appt2.payment_status = "UNPAID"
+        pending = get_pending_payments(db_session, period="Mese")
+        # 2 appuntamenti completati senza pagamento registrato
+        assert pending == 40.0
+
+    def test_get_refunds_returns_refund_amount(self, db_session):
+        collab = create_collaborator(
+            db_session,
+            "Mario",
+            "Barbiere",
+            True,
+            time(8, 0),
+            time(20, 0),
+            ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"],
+        )
+        s1 = create_service(db_session, "Taglio", 30, 20.0)
+        client = create_client(db_session, "Cliente Test", "333000111")
+
+        today = date.today()
+        appt = create_appointment(db_session, client.id, s1.id, collab.id, today, time(10, 0))
+        complete_appointment(db_session, appt.id)
+        register_payment(db_session, appt.id, amount=20.0, method="Contanti")
+        assert get_refunds(db_session, period="Mese") == 0.0
+
+        register_refund(db_session, appt.id)
+        assert get_refunds(db_session, period="Mese") == 20.0

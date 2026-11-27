@@ -1,8 +1,21 @@
 from datetime import date, timedelta
 from collections import defaultdict
-from sqlalchemy import select
+from sqlalchemy import select, func
 from models import Appointment, Service
 from services.appointment_service import get_revenue_between, get_appointment_net_revenue
+
+
+def _get_period_start_date(period: str) -> date:
+    """Restituisce la data di inizio del periodo per la selezione incassi."""
+    today = date.today()
+    if period == "Settimana":
+        return today - timedelta(days=6)
+    if period == "Mese":
+        return today.replace(day=1)
+    if period == "Trimestre":
+        return today - timedelta(days=89)
+    # Anno
+    return date(today.year, 1, 1)
 
 
 def get_revenue_today(session) -> float:
@@ -126,3 +139,89 @@ def get_period_revenue_total(session, period: str) -> tuple[float, int]:
     paid_count = paid_count_result if paid_count_result else 0
 
     return round(float(total), 2), paid_count
+
+
+def get_top_services(session, period: str = "Mese", limit: int = 5) -> list[dict]:
+    """Restituisce i servizi più venduti per il periodo selezionato.
+
+    Conta solo gli appuntamenti COMPLETED con pagamento PAID come servizi venduti.
+    """
+    today = date.today()
+    start_date = _get_period_start_date(period)
+    end_date = today
+
+    stmt = (
+        select(
+            Appointment.service_id.label("service_id"),
+            Service.name.label("service_name"),
+            func.count(Appointment.id).label("service_count"),
+            func.coalesce(func.sum(Appointment.amount_paid), 0.0).label("total_revenue"),
+        )
+        .join(Service, Appointment.service_id == Service.id)
+        .where(
+            Appointment.date >= start_date,
+            Appointment.date <= end_date,
+            Appointment.status == Appointment.STATUS_COMPLETED,
+            Appointment.payment_status == Appointment.PAYMENT_PAID,
+        )
+        .group_by(Appointment.service_id, Service.name)
+        .order_by(
+            func.count(Appointment.id).desc(),
+            func.coalesce(func.sum(Appointment.amount_paid), 0.0).desc(),
+        )
+        .limit(limit)
+    )
+    rows = session.execute(stmt).all()
+    result = []
+    for row in rows:
+        result.append({
+            "service_id": row[0],
+            "service_name": row[1],
+            "count": int(row[2]),
+            "revenue": round(float(row[3] or 0.0), 2),
+        })
+    return result
+
+
+def get_pending_payments(session, period: str = "Mese") -> float:
+    """Restituisce gli incassi ancora da registrare per il periodo.
+
+    Considera come "da registrare" gli appuntamenti COMPLETED con pagamento UNPAID.
+    """
+    today = date.today()
+    start_date = _get_period_start_date(period)
+    end_date = today
+
+    stmt = (
+        select(func.coalesce(func.sum(Appointment.price), 0.0))
+        .where(
+            Appointment.date >= start_date,
+            Appointment.date <= end_date,
+            Appointment.status == Appointment.STATUS_COMPLETED,
+            Appointment.payment_status == Appointment.PAYMENT_UNPAID,
+        )
+    )
+    total = session.execute(stmt).scalar()
+    return round(float(total or 0.0), 2)
+
+
+def get_refunds(session, period: str = "Mese") -> float:
+    """Restituisce i rimborsi per il periodo.
+
+    Somma gli importi pagati (amount_paid) degli appuntamenti COMPLETED con pagamento REFUNDED.
+    """
+    today = date.today()
+    start_date = _get_period_start_date(period)
+    end_date = today
+
+    stmt = (
+        select(func.coalesce(func.sum(Appointment.amount_paid), 0.0))
+        .where(
+            Appointment.date >= start_date,
+            Appointment.date <= end_date,
+            Appointment.status == Appointment.STATUS_COMPLETED,
+            Appointment.payment_status == Appointment.PAYMENT_REFUNDED,
+        )
+    )
+    total = session.execute(stmt).scalar()
+    return round(float(total or 0.0), 2)

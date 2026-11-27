@@ -125,17 +125,53 @@ with tab_list:
 
             act_col1, act_col2, act_col3 = st.columns(3)
             with act_col1:
-                if st.button("Completa", key="btn_complete", disabled=appt_selected.status in ("CANCELLED", "NO_SHOW")):
-                    try:
-                        with get_session() as session:
-                            result = complete_appointment(session, appt_selected.id)
-                        if result:
-                            st.success("Appuntamento completato.")
-                            st.rerun()
-                        else:
-                            st.warning("Impossibile completare l'appuntamento.")
-                    except Exception as exc:
-                        st.error(f"Errore: {exc}")
+                default_amount = float(appt_selected.price) if appt_selected.price is not None else (
+                    float(appt_selected.service.price) if appt_selected.service else 0.0
+                )
+                with st.form(f"complete_payment_form_{appt_selected.id}"):
+                    paid_amount = st.number_input(
+                        "Importo pagato (€)",
+                        min_value=0.0,
+                        max_value=max(default_amount, 0.0),
+                        value=default_amount,
+                        step=0.5,
+                        key=f"pay_amount_{appt_selected.id}",
+                    )
+                    pay_method = st.selectbox(
+                        "Metodo di pagamento",
+                        options=["Contanti", "Carta", "Bonifico", "Altro"],
+                        index=["Contanti", "Carta", "Bonifico", "Altro"].index(
+                            appt_selected.payment_method or "Contanti"
+                        ) if appt_selected.payment_method else 0,
+                        key=f"pay_method_{appt_selected.id}",
+                    )
+                    submit_complete = st.form_submit_button(
+                        "Completa e conferma pagamento",
+                        disabled=appt_selected.status in ("CANCELLED", "NO_SHOW") or appt_selected.status == "COMPLETED",
+                    )
+                    if submit_complete:
+                        try:
+                            with get_session() as session:
+                                result = complete_appointment(
+                                    session,
+                                    appt_selected.id,
+                                    recorded_price=paid_amount if paid_amount > 0 else default_amount,
+                                )
+                                if result:
+                                    # Conferma esplicita del pagamento
+                                    register_payment(
+                                        session,
+                                        appt_selected.id,
+                                        amount=float(result.price) if result.price is not None else default_amount,
+                                        method=pay_method,
+                                    )
+                            if result:
+                                st.success("Appuntamento completato e pagamento confermato.")
+                                st.rerun()
+                            else:
+                                st.warning("Impossibile completare l'appuntamento.")
+                        except Exception as exc:
+                            st.error(f"Errore: {exc}")
             with act_col2:
                 if st.button("Annulla", key="btn_cancel", disabled=appt_selected.status in ("COMPLETED", "NO_SHOW")):
                     try:

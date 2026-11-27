@@ -5,6 +5,10 @@ from services.revenue_service import (
     get_daily_revenue,
     get_monthly_revenue,
     get_period_revenue_total,
+    get_top_services,
+    get_pending_payments,
+    get_refunds,
+    get_revenue_month,
 )
 
 init_db()
@@ -15,6 +19,9 @@ try:
     with get_session() as session:
         daily_revenue = get_daily_revenue(session, days=7)
         monthly_revenue = get_monthly_revenue(session, months=6)
+        top_services = get_top_services(session, period="Mese", limit=5)
+        pending_payments = get_pending_payments(session, period="Mese")
+        refunds = get_refunds(session, period="Mese")
 except Exception as exc:
     st.error(f"Errore nel caricamento degli incassi: {exc}")
     st.stop()
@@ -56,3 +63,42 @@ try:
     m_col2.metric(f"Appuntamenti ({period})", appt_count)
 except Exception as exc:
     st.error(f"Errore nel calcolo del riepilogo per periodo: {exc}")
+
+st.markdown("---")
+st.subheader("Servizi più venduti (mese)")
+if top_services:
+    df_top = pd.DataFrame(top_services)
+    st.dataframe(
+        df_top,
+        column_config={
+            "revenue": st.column_config.NumberColumn("Ricavo", format="€ %.2f"),
+            "count": st.column_config.NumberColumn("Servizi", format="%.0f"),
+        },
+        hide_index=True,
+        width="stretch",
+    )
+else:
+    st.info("Nessun servizio venduto nel periodo corrente.")
+
+st.markdown("---")
+st.subheader("Pagamenti e rimborsi")
+col_p1, col_p2, col_p3 = st.columns(3)
+with col_p1:
+    st.metric("Pagamenti da registrare (mese)", f"€ {pending_payments:.2f}")
+with col_p2:
+    st.metric("Rimborsi (mese)", f"€ {refunds:.2f}")
+with col_p3:
+    st.metric("Incasso mese (netto)", f"€ {get_revenue_month(session):.2f}")
+
+st.markdown("---")
+st.subheader("Riepilogo pagamenti per periodo")
+period2 = st.selectbox("Periodo pagamenti", ["Settimana", "Mese", "Trimestre", "Anno"], key="incass_period_payments")
+try:
+    with get_session() as session:
+        pending = get_pending_payments(session, period=period2)
+        refunds_p = get_refunds(session, period=period2)
+    n_col1, n_col2 = st.columns(2)
+    n_col1.metric(f"Pagamenti da registrare ({period2})", f"€ {pending:.2f}")
+    n_col2.metric(f"Rimborsi ({period2})", f"€ {refunds_p:.2f}")
+except Exception as exc:
+    st.error(f"Errore nel calcolo pagamenti per periodo: {exc}")

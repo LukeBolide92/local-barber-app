@@ -17,6 +17,7 @@ Progettato per funzionare interamente in locale su PC Windows senza servizi clou
   - Registrazione assenza (NO_SHOW): solo se non completato.
   - Completamento: conserva prezzo e durata originari del servizio.
   - Pagamento: registrazione (solo per COMPLETED), rimborso (solo per COMPLETED), importo effettivamente incassato, data/ora pagamento, metodo (contanti/carta/altro).
+  - Completamento e pagamento: pulsante **Completa e conferma pagamento** che porta l'appuntamento a COMPLETED e registra il pagamento (importo + metodo).
 - **Clienti (`pages/3_Clienti.py`)**: ricerca per nome/telefono/email, inserimento, modifica ed eliminazione (con validazione di unicità del nome).
 - **Servizi (`pages/4_Servizi.py`)**: gestione listino servizi con durata in minuti e prezzo (con validazione di unicità del nome).
 - **Collaboratori (`pages/5_Collaboratori.py`)**: gestione ruoli, disponibilità, orari di turno e giorni lavorativi (con validazione di unicità del nome).
@@ -146,6 +147,16 @@ Ogni appuntamento può avere informazioni di pagamento:
 ### Incassi (TASK 3)
 
 Le funzioni di revenue (`get_revenue_summary`, `get_daily_revenue`, `get_monthly_revenue`, `get_period_revenue_total`) considerano come incassi **solo gli appuntamenti COMPLETED con pagamento PAID**. I rimborsi (REFUNDED) annullano l'incasso. Gli appuntamenti BOOKED/CANCELLED/NO_SHOW o pagati con UNPAID non contribuiscono agli incassi.
+
+### Incassi e metriche (TASK 4)
+
+La dashboard economica (`pages/1_Dashboard.py`) e la pagina **Incassi** (`pages/6_Incassi.py`) espongono:
+
+- **Incassi giornalieri** (ultimi 7 giorni) e **mensili** (ultimi 6 mesi) e per periodo (Settimana, Mese, Trimestre, Anno).
+- **Numero di servizi completati** (pagati) per periodo.
+- **Servizi più venduti** (per periodo): conteggio servizi COMPLETED+PAID e ricavo associato.
+- **Pagamenti ancora da registrare**: somma degli importi degli appuntamenti COMPLETED con pagamento UNPAID (per periodo).
+- **Rimborsi**: somma degli importi pagati (REFUNDED) per periodo.
 
 3. Puoi scaricare il file `.db` su una chiavetta USB o altro disco usando **Scarica backup selezionato**.
 4. Per ripristinare i dati:
