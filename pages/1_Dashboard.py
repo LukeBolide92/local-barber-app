@@ -1,7 +1,7 @@
 from datetime import date
 import pandas as pd
 import streamlit as st
-from database import get_session, init_db
+from db.database import get_session, init_db
 from services.appointment_service import get_appointments_by_date, get_revenue_summary
 from services.revenue_service import (
     get_top_services,
@@ -11,7 +11,6 @@ from services.revenue_service import (
 
 init_db()
 
-st.title("Local Barber Manager ✂️")
 st.subheader("Appuntamenti di oggi")
 
 try:

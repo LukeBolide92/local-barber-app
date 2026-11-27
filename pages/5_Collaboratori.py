@@ -2,7 +2,7 @@ from datetime import time
 import pandas as pd
 import streamlit as st
 from sqlalchemy.exc import IntegrityError
-from database import get_session, init_db
+from db.database import get_session, init_db
 from services.collaborator_service import (
     DEFAULT_WORK_DAYS,
     create_collaborator,
@@ -17,7 +17,7 @@ init_db()
 DAYS_OPTIONS = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]
 ROLE_OPTIONS = ["Barbiere", "Apprendista", "Barbiere capo"]
 
-st.title("Collaboratori")
+st.subheader("Collaboratori")
 
 tab_list, tab_new, tab_edit = st.tabs(
     ["Elenco", "Nuovo collaboratore", "Modifica collaboratore / orari"]

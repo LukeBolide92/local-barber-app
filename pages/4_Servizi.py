@@ -1,7 +1,7 @@
 import pandas as pd
 import streamlit as st
 from sqlalchemy.exc import IntegrityError
-from database import get_session, init_db
+from db.database import get_session, init_db
 from services.service import (
     create_service,
     delete_service,
@@ -11,7 +11,7 @@ from services.service import (
 
 init_db()
 
-st.title("Servizi")
+st.subheader("Servizi")
 
 tab_list, tab_new, tab_edit = st.tabs(["Elenco", "Nuovo servizio", "Modifica servizio"])
 

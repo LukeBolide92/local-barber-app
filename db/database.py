@@ -16,7 +16,7 @@ class Base(DeclarativeBase):
 # Database path configuration
 # Look for environment variable first, then default to data directory relative to app
 DB_PATH_ENV = "BARBER_DB_PATH"
-DEFAULT_RELATIVE_PATH = "data/barber.db"
+DEFAULT_RELATIVE_PATH = "../data/barber.db"
 
 # Resolve database path: env var > data directory relative to app source
 # This avoids dependency on the execution directory

@@ -3,7 +3,7 @@ import tempfile
 from pathlib import Path
 import pandas as pd
 import streamlit as st
-from database import DB_PATH, get_session, init_db
+from db.database import DB_PATH, get_session, init_db
 from services.appointment_service import get_appointments
 from services.backup_service import (
     DEFAULT_BACKUP_DIR,
@@ -16,11 +16,13 @@ from services.client_service import get_clients
 from services.collaborator_service import get_collaborators
 from services.service import get_services
 
+from utils.page_header import render_page_header
+
 init_db()
 
-st.title("Impostazioni")
+st.subheader("Impostazioni")
 
-st.subheader("Stato Database")
+render_page_header("Stato Database")
 db_exists = os.path.exists(DB_PATH)
 db_size_kb = os.path.getsize(DB_PATH) / 1024 if db_exists else 0.0
 
@@ -44,7 +46,7 @@ except Exception as exc:
     st.error(f"Errore nella lettura delle statistiche del database: {exc}")
 
 st.markdown("---")
-st.subheader("Backup e Ripristino")
+render_page_header("Backup e Ripristino")
 st.caption(f"Cartella backup locale: {os.path.abspath(DEFAULT_BACKUP_DIR)}")
 
 if st.button("Crea backup ora", type="primary"):
@@ -152,5 +154,5 @@ with st.expander("Ripristina da file esterno (.db)"):
                 tmp_path.unlink()
 
 st.markdown("---")
-st.subheader("Informazioni")
+render_page_header("Informazioni")
 st.write("Local Barber Manager - Versione 1.0 - 26/11/2026")

@@ -1,7 +1,7 @@
 from datetime import date, time, timedelta
 import pandas as pd
 import streamlit as st
-from database import get_session, init_db
+from db.database import get_session, init_db
 from services.appointment_service import (
     create_appointment,
     delete_appointment,
@@ -25,7 +25,7 @@ from services.service import get_services
 
 init_db()
 
-st.title("Appuntamenti")
+st.subheader("Appuntamenti")
 
 try:
     with get_session() as session:
@@ -46,7 +46,6 @@ STATUS_LABELS = {
 }
 
 with tab_list:
-    st.subheader("Filtri")
     col1, col2, col3, col4 = st.columns([2, 2, 2, 1])
     with col1:
         filter_date = st.date_input("Data", value=date.today(), key="appt_list_date")
@@ -285,7 +284,6 @@ with tab_list:
         st.info("Nessun appuntamento per i filtri selezionati.")
 
 with tab_cal:
-    st.subheader("Calendario")
     col1, col2 = st.columns(2)
     with col1:
         cal_start = st.date_input("Data di riferimento", value=date.today(), key="appt_cal_date")
@@ -366,7 +364,6 @@ with tab_cal:
             st.dataframe(df_day, width="stretch")
 
 with tab_new:
-    st.subheader("Nuovo appuntamento")
     available_collaborators = [c for c in collaborators if c.availability == 1]
 
     if not clients or not services or not available_collaborators:

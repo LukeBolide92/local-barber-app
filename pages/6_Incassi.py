@@ -1,6 +1,6 @@
 import pandas as pd
 import streamlit as st
-from database import get_session, init_db
+from db.database import get_session, init_db
 from services.revenue_service import (
     get_daily_revenue,
     get_monthly_revenue,
@@ -11,9 +11,11 @@ from services.revenue_service import (
     get_revenue_month,
 )
 
+from utils.page_header import render_page_header
+
 init_db()
 
-st.title("Incassi")
+st.subheader("Incassi")
 
 try:
     with get_session() as session:
@@ -28,7 +30,7 @@ except Exception as exc:
 
 col1, col2 = st.columns(2)
 with col1:
-    st.subheader("Riepilogo giornaliero (ultimi 7 giorni)")
+    render_page_header("Riepilogo giornaliero (ultimi 7 giorni)")
     df_daily = pd.DataFrame(daily_revenue)
     df_daily = df_daily.rename(columns={"date": "Data", "revenue": "Incasso"})
     st.dataframe(
@@ -40,7 +42,7 @@ with col1:
     st.bar_chart(df_daily.set_index("Data")["Incasso"])
 
 with col2:
-    st.subheader("Riepilogo mensile (ultimi 6 mesi)")
+    render_page_header("Riepilogo mensile (ultimi 6 mesi)")
     df_monthly = pd.DataFrame(monthly_revenue)
     df_monthly = df_monthly.rename(columns={"month": "Mese", "revenue": "Incasso"})
     st.dataframe(
@@ -52,7 +54,7 @@ with col2:
     st.bar_chart(df_monthly.set_index("Mese")["Incasso"])
 
 st.markdown("---")
-st.subheader("Riepilogo per periodo")
+render_page_header("Riepilogo per periodo")
 period = st.selectbox("Periodo", ["Settimana", "Mese", "Trimestre", "Anno"])
 
 try:
@@ -65,7 +67,7 @@ except Exception as exc:
     st.error(f"Errore nel calcolo del riepilogo per periodo: {exc}")
 
 st.markdown("---")
-st.subheader("Servizi più venduti (mese)")
+render_page_header("Servizi più venduti (mese)")
 if top_services:
     df_top = pd.DataFrame(top_services)
     st.dataframe(
@@ -81,7 +83,7 @@ else:
     st.info("Nessun servizio venduto nel periodo corrente.")
 
 st.markdown("---")
-st.subheader("Pagamenti e rimborsi")
+render_page_header("Pagamenti e rimborsi")
 col_p1, col_p2, col_p3 = st.columns(3)
 with col_p1:
     st.metric("Pagamenti da registrare (mese)", f"€ {pending_payments:.2f}")
@@ -91,7 +93,7 @@ with col_p3:
     st.metric("Incasso mese (netto)", f"€ {get_revenue_month(session):.2f}")
 
 st.markdown("---")
-st.subheader("Riepilogo pagamenti per periodo")
+render_page_header("Riepilogo pagamenti per periodo")
 period2 = st.selectbox("Periodo pagamenti", ["Settimana", "Mese", "Trimestre", "Anno"], key="incass_period_payments")
 try:
     with get_session() as session:
