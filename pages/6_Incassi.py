@@ -20,7 +20,7 @@ st.subheader("Incassi")
 try:
     with get_session() as session:
         daily_revenue = get_daily_revenue(session, days=7)
-        monthly_revenue = get_monthly_revenue(session, months=6)
+        monthly_revenue = get_monthly_revenue(session, months=7)
         top_services = get_top_services(session, period="Mese", limit=5)
         pending_payments = get_pending_payments(session, period="Mese")
         refunds = get_refunds(session, period="Mese")
@@ -42,7 +42,7 @@ with col1:
     st.bar_chart(df_daily.set_index("Data")["Incasso"])
 
 with col2:
-    render_page_header("Riepilogo mensile (ultimi 6 mesi)")
+    render_page_header("Riepilogo mensile (ultimi 7 mesi)")
     df_monthly = pd.DataFrame(monthly_revenue)
     df_monthly = df_monthly.rename(columns={"month": "Mese", "revenue": "Incasso"})
     st.dataframe(
