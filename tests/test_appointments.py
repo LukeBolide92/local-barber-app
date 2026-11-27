@@ -423,6 +423,71 @@ class TestPagamenti:
         daily = get_daily_revenue(db_session, days=7)
         assert daily[-1]["revenue"] == 0.0
 
+    def test_refund_blocked_for_unpaid_appointment(self, db_session):
+        """TASK 3: il rimborso è consentito solo per appuntamenti effettivamente pagati."""
+        collab = create_collaborator(
+            db_session,
+            "Mario",
+            "Barbiere",
+            True,
+            time(8, 0),
+            time(20, 0),
+            ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"],
+        )
+        s1 = create_service(db_session, "Taglio", 30, 20.0)
+        client = create_client(db_session, "Cliente Test", "333000111")
+
+        today = date.today()
+        appt = create_appointment(db_session, client.id, s1.id, collab.id, today, time(10, 0))
+        complete_appointment(db_session, appt.id)
+        # Appuntamento completato ma non pagato -> rimborso non consentito
+        with pytest.raises(ValueError, match="pagato"):
+            register_refund(db_session, appt.id)
+
+    def test_double_refund_blocked(self, db_session):
+        """TASK 3: non è possibile rimborsare due volte lo stesso pagamento."""
+        collab = create_collaborator(
+            db_session,
+            "Mario",
+            "Barbiere",
+            True,
+            time(8, 0),
+            time(20, 0),
+            ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"],
+        )
+        s1 = create_service(db_session, "Taglio", 30, 20.0)
+        client = create_client(db_session, "Cliente Test", "333000111")
+
+        today = date.today()
+        appt = create_appointment(db_session, client.id, s1.id, collab.id, today, time(10, 0))
+        complete_appointment(db_session, appt.id)
+        register_payment(db_session, appt.id, amount=20.0, method="Contanti")
+        refunded = register_refund(db_session, appt.id)
+        assert refunded.payment_status == "REFUNDED"
+        with pytest.raises(ValueError, match="già"):
+            register_refund(db_session, appt.id)
+
+    def test_refund_amount_not_exceeding_paid_blocked(self, db_session):
+        """TASK 3: non è possibile rimborsare un importo superiore a quello incassato."""
+        collab = create_collaborator(
+            db_session,
+            "Mario",
+            "Barbiere",
+            True,
+            time(8, 0),
+            time(20, 0),
+            ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"],
+        )
+        s1 = create_service(db_session, "Taglio", 30, 20.0)
+        client = create_client(db_session, "Cliente Test", "333000111")
+
+        today = date.today()
+        appt = create_appointment(db_session, client.id, s1.id, collab.id, today, time(10, 0))
+        complete_appointment(db_session, appt.id)
+        register_payment(db_session, appt.id, amount=20.0, method="Contanti")
+        with pytest.raises(ValueError, match="superiore"):
+            register_refund(db_session, appt.id, amount=25.0)
+
 
 class TestIncassiAggiuntivi:
     def test_top_services_returns_highest_count(self, db_session):
