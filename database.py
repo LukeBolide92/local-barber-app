@@ -55,40 +55,34 @@ SessionLocal = sessionmaker(bind=engine, expire_on_commit=False, future=True)
 
 def _add_payment_columns_if_missing(engine=engine, session_factory=None) -> None:
     """Aggiunge colonne di pagamento se mancano nel database esistente.
-    
+
     Esegue un backfill sensato dei dati esistenti:
     - Appuntamenti COMPLETED: imposta payment_status=PAID con amount_paid=price
     - Altri appuntamenti: imposta payment_status=UNPAID
     """
     from models import Appointment
-    
-    # Verifica se già presenti (SQLite non ha DESCRIBE, proviamo a leggere)
-    # Se l'errore non si verifica, le colonne sono già presenti
-    conn = None
-    try:
-        from sqlalchemy import inspect as sa_inspect
-        inspector = sa_inspect(engine)
-        cols = [c['name'] for c in inspector.get_columns('appointments')]
-        if all(c in cols for c in ['payment_status', 'amount_paid', 'payment_datetime', 'payment_method']):
-            logger.info("Columnes di pagamento già presenti. Skip migration.")
-            return
-    except Exception:
-        pass
-    
-    # SQLite: aggiungiamo le colonne una per una
-    from sqlalchemy import text
-    stmt_payment_status = text("ALTER TABLE appointments ADD COLUMN payment_status TEXT DEFAULT 'UNPAID'")
-    stmt_amount_paid = text("ALTER TABLE appointments ADD COLUMN amount_paid REAL")
-    stmt_payment_datetime = text("ALTER TABLE appointments ADD COLUMN payment_datetime DATETIME")
-    stmt_payment_method = text("ALTER TABLE appointments ADD COLUMN payment_method TEXT")
-    
-    with engine.connect() as conn:
-        conn.execute(stmt_payment_status)
-        conn.execute(stmt_amount_paid)
-        conn.execute(stmt_payment_datetime)
-        conn.execute(stmt_payment_method)
-        conn.commit()
-    
+
+    from sqlalchemy import inspect as sa_inspect, text
+
+    inspector = sa_inspect(engine)
+    cols = [c['name'] for c in inspector.get_columns('appointments')]
+    payment_columns = ['payment_status', 'amount_paid', 'payment_datetime', 'payment_method']
+    missing_columns = [c for c in payment_columns if c not in cols]
+    if not missing_columns:
+        logger.info("Columnes di pagamento già presenti. Skip migration.")
+        return
+
+    stmts = {
+        'payment_status': text("ALTER TABLE appointments ADD COLUMN payment_status TEXT DEFAULT 'UNPAID'"),
+        'amount_paid': text("ALTER TABLE appointments ADD COLUMN amount_paid REAL"),
+        'payment_datetime': text("ALTER TABLE appointments ADD COLUMN payment_datetime DATETIME"),
+        'payment_method': text("ALTER TABLE appointments ADD COLUMN payment_method TEXT"),
+    }
+
+    with engine.begin() as conn:
+        for column in missing_columns:
+            conn.execute(stmts[column])
+
     # Backfill dei dati esistenti
     _session_factory = session_factory or SessionLocal
     with _session_factory() as session:
@@ -109,6 +103,7 @@ def _add_payment_columns_if_missing(engine=engine, session_factory=None) -> None
                 appt.amount_paid = 0.0
         session.commit()
     logger.info(f"Migrazione pagamento completata per {len(appointments)} appuntamenti.")
+
 
 def init_db():
     """Crea le tabelle se non esistono e migra colonne di pagamento."""

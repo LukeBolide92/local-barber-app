@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect as sa_inspect, text
 from sqlalchemy.orm import sessionmaker
 
 from database import Base, _add_payment_columns_if_missing
@@ -58,6 +58,18 @@ def _make_old_schema_engine(tmp_path):
     Base.metadata.create_all(engine)
     with engine.begin() as conn:
         for column in PAYMENT_COLUMNS:
+            conn.execute(text(f"ALTER TABLE appointments DROP COLUMN {column}"))
+    return engine
+
+
+def _make_partially_migrated_engine(tmp_path, present_columns):
+    """Crea un database SQLite con una migrazione PARZIALMENTE applicata:
+    le colonne di pagamento indicate in present_columns esistono, le altre no."""
+    engine = create_engine(f"sqlite:///{tmp_path / 'partial_barber.db'}", echo=False)
+    Base.metadata.create_all(engine)
+    drop_columns = [c for c in PAYMENT_COLUMNS if c not in set(present_columns)]
+    with engine.begin() as conn:
+        for column in drop_columns:
             conn.execute(text(f"ALTER TABLE appointments DROP COLUMN {column}"))
     return engine
 
@@ -156,5 +168,26 @@ class TestPaymentMigrationBackfill:
             assert len(appts) == 1
             assert appts[0].payment_status == "PAID"
             assert appts[0].amount_paid == 25.0
+        finally:
+            engine.dispose()
+
+    def test_migration_adds_only_missing_columns_in_partial_state(self, tmp_path):
+        """TASK 1 (FASE 4.2): DB con migrazione parzialmente applicata
+        -> aggiunge SOLO le colonne mancanti, senza errori e preservando dati."""
+        engine = _make_partially_migrated_engine(tmp_path, present_columns=["amount_paid"])
+        try:
+            _seed_appointments(engine, [("BOOKED", 25.0)])
+            _run_migration(engine)
+
+            appts = _get_appointments(engine)
+            assert len(appts) == 1
+            cols = [c["name"] for c in sa_inspect(engine).get_columns("appointments")]
+            for column in PAYMENT_COLUMNS:
+                assert column in cols, f"Colonna mancante dopo migrazione: {column}"
+
+            appt = appts[0]
+            assert appt.status == Appointment.STATUS_BOOKED
+            assert appt.payment_status == Appointment.PAYMENT_UNPAID
+            assert appt.amount_paid == 0.0
         finally:
             engine.dispose()
