@@ -9,24 +9,28 @@ def is_collaborator_available(
     collaborator_id: int,
     appt_date: date,
     appt_time: time,
+    duration_minutes: int = 60,
 ) -> bool:
     """Verifica se un collaboratore è disponibile in orario specifico.
 
     Controlla:
     1. Il collaboratore è attivo (availability=1)
-    2. L'orario rientra negli orari di lavoro (start_time - end_time)
+    2. L'orario di inizio e quello di fine dell'intervallo rientrano negli orari di lavoro (start_time - end_time)
     3. Il giorno corrisponde ai giorni di lavoro
+    4. Non ci sono sovrapposizioni con altri appuntamenti BOOKED
     """
     from services.collaborator_service import get_collaborator_by_id as get_collaborator
     collaborator = get_collaborator(session, collaborator_id)
     if not collaborator or collaborator.availability != 1:
         return False
 
-    # Controlla orario di lavoro
-    # Normalizza l'orario a un giorno fittizio per il confronto
-    appt_time_normalized = time(appt_time.hour, appt_time.minute)
-    if collaborator.start_time and collaborator.end_time:
-        if appt_time_normalized < collaborator.start_time or appt_time_normalized > collaborator.end_time:
+    # Controlla orario di lavoro: inizio e fine dell'intervallo devono rientrare nel turno
+    start_time = collaborator.start_time
+    end_time = collaborator.end_time
+    if start_time and end_time:
+        start_dt = datetime.combine(appt_date, appt_time)
+        end_dt = start_dt + timedelta(minutes=duration_minutes)
+        if appt_time < start_time or end_dt.time() > end_time:
             return False
 
     # Controlla giorni di lavoro (supporta sia nomi italiani es. ["Lunedì", ...] sia indici 0..6)
@@ -56,6 +60,10 @@ def is_collaborator_available(
                     return False
         except (json.JSONDecodeError, TypeError):
             pass
+
+    # Controlla sovrapposizioni con altri appuntamenti BOOKED
+    if check_appointment_conflict(session, collaborator_id, appt_date, appt_time, duration_minutes):
+        return False
 
     return True
 
@@ -124,13 +132,13 @@ def create_appointment(
     duration_minutes = service.duration_minutes if service else 60
     price = service.price if service else 0.0
 
-    # 1. Verifica disponibilità del collaboratore
-    if not is_collaborator_available(session, collaborator_id, appt_date, appt_time):
-        raise ValueError(f"Collaboratore non disponibile in data {appt_date} alle {appt_time.strftime('%H:%M')}")
-
-    # 2. Verifica conflitto di appuntamento (solo appuntamenti BOOKED)
+    # 1. Verifica conflitto di appuntamento (solo appuntamenti BOOKED)
     if check_appointment_conflict(session, collaborator_id, appt_date, appt_time, duration_minutes):
         raise ValueError("Conflitto di orario: il collaboratore ha già un appuntamento in quel momento")
+
+    # 2. Verifica disponibilità del collaboratore (orario di lavoro + intervallo)
+    if not is_collaborator_available(session, collaborator_id, appt_date, appt_time, duration_minutes):
+        raise ValueError(f"Collaboratore non disponibile in data {appt_date} alle {appt_time.strftime('%H:%M')}")
 
     appointment = Appointment(
         client_id=client_id,

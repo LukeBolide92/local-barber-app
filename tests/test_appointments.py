@@ -66,6 +66,65 @@ class TestDisponibilitaEAppuntamenti:
         monday = date(2025, 1, 6)
         assert is_collaborator_available(db_session, collab.id, monday, time(10, 0)) is False
 
+    def test_is_collaborator_available_full_interval_within_working_hours(self, db_session):
+        """TASK 4: l'intero intervallo dell'appuntamento deve rientrare nel turno lavorativo."""
+        collab = create_collaborator(
+            db_session,
+            "Mario",
+            "Barbiere",
+            True,
+            time(9, 0),
+            time(19, 0),
+            ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"],
+        )
+
+        # Appuntamento che termina esattamente alla chiusura -> DISPONIBILE
+        assert is_collaborator_available(db_session, collab.id, date(2025, 1, 6), time(18, 0), duration_minutes=60) is True
+        # Appuntamento che supera la chiusura -> NON DISPONIBILE
+        assert is_collaborator_available(db_session, collab.id, date(2025, 1, 6), time(18, 45), duration_minutes=45) is False
+        # Appuntamento che inizia prima dell'orario di apertura -> NON DISPONIBILE
+        assert is_collaborator_available(db_session, collab.id, date(2025, 1, 6), time(8, 30), duration_minutes=30) is False
+
+    def test_is_collaborator_available_conflict_full_interval(self, db_session):
+        """TASK 4: sovrapposizioni -> NON disponibile; appuntamenti consecutivi -> disponibile."""
+        collab = create_collaborator(
+            db_session,
+            "Mario",
+            "Barbiere",
+            True,
+            time(9, 0),
+            time(19, 0),
+            ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"],
+        )
+        service = create_service(db_session, "Taglio", 30, 25.0)
+        client = create_client(db_session, "Luca", "3334445556")
+        monday = date(2025, 1, 6)
+        appt = create_appointment(db_session, client.id, service.id, collab.id, monday, time(10, 0))
+
+        # Sovrapposizione (10:15 + 30 min -> 10:45 > inizio 10:00) -> NON DISPONIBILE
+        assert is_collaborator_available(db_session, collab.id, monday, time(10, 15), duration_minutes=30) is False
+        # Convenzionale (10:30 inizia quando il precedente termina) -> DISPONIBILE
+        assert is_collaborator_available(db_session, collab.id, monday, time(10, 30), duration_minutes=30) is True
+
+    def test_is_collaborator_available_excludes_cancelled(self, db_session):
+        """TASK 4: gli appuntamenti annullati non bloccano la disponibilità."""
+        collab = create_collaborator(
+            db_session,
+            "Mario",
+            "Barbiere",
+            True,
+            time(9, 0),
+            time(19, 0),
+            ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"],
+        )
+        service = create_service(db_session, "Taglio", 30, 25.0)
+        client = create_client(db_session, "Luca", "3334445556")
+        monday = date(2025, 1, 6)
+        appt = create_appointment(db_session, client.id, service.id, collab.id, monday, time(10, 0))
+        assert is_collaborator_available(db_session, collab.id, monday, time(10, 15), duration_minutes=30) is False
+        cancel_appointment(db_session, appt.id)
+        assert is_collaborator_available(db_session, collab.id, monday, time(10, 15), duration_minutes=30) is True
+
     def test_create_appointment_and_conflict_detection(self, db_session):
         collab = create_collaborator(
             db_session,
