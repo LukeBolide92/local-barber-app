@@ -53,7 +53,7 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False, future=True)
 
 
-def _add_payment_columns_if_missing():
+def _add_payment_columns_if_missing(engine=engine, session_factory=None) -> None:
     """Aggiunge colonne di pagamento se mancano nel database esistente.
     
     Esegue un backfill sensato dei dati esistenti:
@@ -90,11 +90,12 @@ def _add_payment_columns_if_missing():
         conn.commit()
     
     # Backfill dei dati esistenti
-    with SessionLocal() as session:
+    _session_factory = session_factory or SessionLocal
+    with _session_factory() as session:
         appointments = session.query(Appointment).all()
         for appt in appointments:
             if appt.status == Appointment.STATUS_COMPLETED:
-                appt.payment_status = Appointment.STATUS_COMPLETED  # usa costante corretta
+                appt.payment_status = Appointment.PAYMENT_PAID
                 appt.amount_paid = appt.price if appt.price else 0.0
                 # Imposta data/pagamento alla data/ora dell'appuntamento
                 from datetime import datetime
@@ -104,7 +105,7 @@ def _add_payment_columns_if_missing():
                 else:
                     appt.payment_method = "Altro"
             else:
-                appt.payment_status = "UNPAID"
+                appt.payment_status = Appointment.PAYMENT_UNPAID
                 appt.amount_paid = 0.0
         session.commit()
     logger.info(f"Migrazione pagamento completata per {len(appointments)} appuntamenti.")
