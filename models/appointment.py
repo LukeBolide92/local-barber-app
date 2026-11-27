@@ -1,7 +1,14 @@
 from datetime import date, time, datetime
+from typing import TYPE_CHECKING
+
 from sqlalchemy import String, ForeignKey, Date, Time, Integer, Float, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
+
+if TYPE_CHECKING:
+    from models.client import Client
+    from models.service import Service
+    from models.collaborator import Collaborator
 
 
 class Appointment(Base):
