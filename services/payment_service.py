@@ -65,8 +65,11 @@ def register_refund(
 ) -> Appointment | None:
     """Registra un rimborso per un appuntamento completato.
 
-    TASK 3: sicurezza dei rimborsi - il rimborso totale è consentito solo per
-    appuntamenti pagati; l'importo non può superare quello già incassato.
+    TASK 3: sicurezza dei rimborsi - il rimborso è consentito solo per appuntamenti
+    pagati; l'importo non può superare quello già incassato.
+
+    TASK 2 (FASE 4.2): supporto esclusivamente a rimborsi totali. Qualsiasi importo
+    diverso dall'importo effettivamente pagato viene rifiutato come rimborso parziale.
     """
     appointment = get_appointment_by_id(session, appointment_id)
     if not appointment:
@@ -87,6 +90,9 @@ def register_refund(
     refund_amount = float(amount) if amount is not None else amount_paid
     if refund_amount > amount_paid + 1e-9:
         raise ValueError("Importo di rimborso superiore all'importo incassato")
+    # TASK 2 (FASE 4.2): supporto esclusivamente a rimborsi totali
+    if amount is not None and abs(refund_amount - amount_paid) > 1e-9:
+        raise ValueError("Rimborso parziale non consentito: per questa versione supportiamo solo rimborsi totali")
 
     appointment.payment_status = Appointment.PAYMENT_REFUNDED
     session.commit()

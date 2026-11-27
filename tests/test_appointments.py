@@ -547,6 +547,52 @@ class TestPagamenti:
         with pytest.raises(ValueError, match="superiore"):
             register_refund(db_session, appt.id, amount=25.0)
 
+    def test_refund_partial_not_allowed(self, db_session):
+        """TASK 2 (FASE 4.2): per questa versione supportiamo esclusivamente rimborsi totali."""
+        collab = create_collaborator(
+            db_session,
+            "Mario",
+            "Barbiere",
+            True,
+            time(8, 0),
+            time(20, 0),
+            ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"],
+        )
+        s1 = create_service(db_session, "Taglio", 30, 20.0)
+        client = create_client(db_session, "Cliente Test", "333000111")
+
+        today = date.today()
+        appt = create_appointment(db_session, client.id, s1.id, collab.id, today, time(10, 0))
+        complete_appointment(db_session, appt.id)
+        register_payment(db_session, appt.id, amount=20.0, method="Contanti")
+
+        # Un rimborso parziale (es. 10 di 20) deve essere rifiutato
+        with pytest.raises(ValueError, match="parziale"):
+            register_refund(db_session, appt.id, amount=10.0)
+
+    def test_refund_with_full_amount_allowed(self, db_session):
+        """TASK 2 (FASE 4.2): rimborso esplicito dell'intero importo va accettato."""
+        collab = create_collaborator(
+            db_session,
+            "Mario",
+            "Barbiere",
+            True,
+            time(8, 0),
+            time(20, 0),
+            ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"],
+        )
+        s1 = create_service(db_session, "Taglio", 30, 20.0)
+        client = create_client(db_session, "Cliente Test", "333000111")
+
+        today = date.today()
+        appt = create_appointment(db_session, client.id, s1.id, collab.id, today, time(10, 0))
+        complete_appointment(db_session, appt.id)
+        register_payment(db_session, appt.id, amount=20.0, method="Contanti")
+
+        refunded = register_refund(db_session, appt.id, amount=20.0)
+        assert refunded.payment_status == "REFUNDED"
+        assert get_refunds(db_session, period="Mese") == 20.0
+
 
 class TestIncassiAggiuntivi:
     def test_top_services_returns_highest_count(self, db_session):
