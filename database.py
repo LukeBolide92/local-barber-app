@@ -120,9 +120,9 @@ def init_db():
 
 
 @contextmanager
-def get_session() -> Session:
+def get_session(session_factory=None) -> Session:
     """Context manager per sessioni DB con gestione errori e logging."""
-    session = SessionLocal()
+    session = (session_factory or SessionLocal)()
     try:
         yield session
         session.commit()
