@@ -15,9 +15,14 @@ from services.backup_service import (
 from services.client_service import get_clients
 from services.collaborator_service import get_collaborators
 from services.service import get_services
+from services.supabase_credential_service import (
+    CredentialStoreUnavailableError,
+    delete_pat,
+    store_pat,
+)
 
 from utils.page_header import render_page_header
-from utils.supabase import extract_project_ref
+from utils.supabase import extract_project_ref, mask_token
 
 init_db()
 
@@ -193,7 +198,30 @@ with tab_remota:
             if not project_url or not pat_token:
                 st.warning("Inserisci sia il Project URL sia il Personal Access Token (PAT) per proseguire.")
             else:
-                st.info("La procedura di verifica e configurazione del database remoto è prevista nella fase di collegamento al progetto.")
+                project_ref = extract_project_ref(project_url)
+                if not project_ref:
+                    st.error("Impossibile estrarre il Project Reference ID dall'URL. Verifica che l'URL sia corretto.")
+                else:
+                    try:
+                        # Salva il PAT nel Credential Manager (vault sicuro)
+                        store_pat(project_ref, pat_token)
+                        st.success("PAT salvato in modo sicuro. Avvio procedura di verifica...")
+                        st.info(
+                            f"Project Reference ID rilevato: {project_ref}. "
+                            "Il token è stato memorizzato temporaneamente."
+                        )
+                    except CredentialStoreUnavailableError:
+                        # Se il vault non è disponibile, interrompiamo senza salvare in chiaro
+                        st.error(
+                            "Impossibile salvare le credenziali: sistema di protezione credenziali non disponibile. "
+                            "Immettere i dati di nuovo se si riprova."
+                        )
+                    except Exception:
+                        # Non mostrare mai il token nelle risposte all'utente
+                        st.error(
+                            "Errore imprevisto durante la gestione delle credenziali. "
+                            "Riprova."
+                        )
 
 # st.markdown("---")
 render_page_header("Informazioni")
