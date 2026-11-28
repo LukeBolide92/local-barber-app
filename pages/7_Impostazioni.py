@@ -17,6 +17,7 @@ from services.collaborator_service import get_collaborators
 from services.service import get_services
 
 from utils.page_header import render_page_header
+from utils.supabase import extract_project_ref
 
 init_db()
 
@@ -44,6 +45,44 @@ try:
     c4.metric("Appuntamenti", n_appts)
 except Exception as exc:
     st.error(f"Errore nella lettura delle statistiche del database: {exc}")
+
+st.markdown("---")
+render_page_header("Database remoto")
+st.caption("Configura o collega il gestionale al tuo database Supabase remoto.")
+
+# ---------------------------------------------------------------------------
+# Possibilità A: Configura Supabase (guida passo passo)
+# ---------------------------------------------------------------------------
+with st.expander("A. Configura Supabase"):
+    st.markdown("**Passaggio 1 – Creazione account**")
+    st.write("Crea un account gratuito su [Supabase](https://supabase.com).")
+    st.markdown("**Passaggio 2 – Creazione progetto**")
+    st.write("Crea un nuovo progetto Supabase: scegli il nome, la regione e crea la password del database (conservala in un luogo sicuro). Il gestionale non richiede la password del database.")
+    st.markdown("**Passaggio 3 – Recupero Project URL**")
+    st.write("Nel pannello di controllo di Supabase trova la Project URL, copiala e incollala nel campo dedicato.")
+    st.markdown("**Passaggio 4 – Creazione Personal Access Token**")
+    st.write("Genera un PAT in Supabase (documentazione: https://supabase.com/docs/guides/platform/access-control). Il token è una credenziale potente: va trattato come una password.")
+    st.markdown("**Passaggio 5 – Collegamento**")
+    st.write("Inserisci Project URL e PAT, poi premi il pulsante **'Verifica e configura'**.")
+
+# ---------------------------------------------------------------------------
+# Possibilità B: Ho già un progetto Supabase
+# ---------------------------------------------------------------------------
+st.subheader("B. Ho già un progetto Supabase")
+st.caption("Inserisci direttamente i parametri richiesti per il collegamento.")
+
+project_url = st.text_input("Project URL", placeholder="https://xxxxx.supabase.co")
+pat_token = st.text_input("Personal Access Token (PAT)", type="password", placeholder="Token di accesso...")
+
+project_ref = extract_project_ref(project_url) if project_url else None
+if project_ref:
+    st.caption(f"**Project Reference ID:** {project_ref}")
+
+if st.button("Verifica e configura", type="primary"):
+    if not project_url or not pat_token:
+        st.warning("Inserisci sia il Project URL sia il Personal Access Token (PAT) per proseguire.")
+    else:
+        st.info("La procedura di verifica e configurazione del database remoto è prevista nella fase di collegamento al progetto.")
 
 st.markdown("---")
 render_page_header("Backup e Ripristino")
