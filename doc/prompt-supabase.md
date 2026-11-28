@@ -126,16 +126,6 @@ Spiegare dove trovare il Project URL nel pannello Supabase.
 
 Consentire di copiarlo e inserirlo nel gestionale.
 
-Dettaglio operativo della guida (come verificato nella pratica):
-
-1. Accedere al dashboard di Supabase (https://supabase.com) e selezionare il progetto creato.
-2. Cliccare sul pulsante **"Connect"** (visibile nella pagina del progetto).
-3. Selezionare la voce **"Connect via API"**.
-4. Nella schermata risultante, copiare il valore del campo **"SUPABASE_URL"** (formato `https://<project-ref>.supabase.co`).
-5. Incollare il valore nel campo "Project URL" del gestionale.
-
-Il Project Reference ID viene estratto automaticamente dall'URL inserito.
-
 Passaggio 4 – Creazione Personal Access Token
 
 Spiegare come generare un PAT.
