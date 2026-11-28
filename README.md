@@ -1,4 +1,4 @@
-# Barber Manager
+# Private Barber Manager
 
 Gestionale locale semplice e completo per barbieri, sviluppato in Python con **Streamlit**, **SQLite** e **SQLAlchemy 2**.  
 Progettato per funzionare interamente in locale su PC Windows senza servizi cloud o dipendenze esterne.

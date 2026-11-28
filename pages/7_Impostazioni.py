@@ -194,4 +194,4 @@ with st.expander("Ripristina da file esterno (.db)"):
 
 st.markdown("---")
 render_page_header("Informazioni")
-st.write("Local Barber Manager - Versione 1.0 - 26/11/2026")
+st.write("Private Barber Manager - Versione 1.0 - 26/11/2026")

@@ -1,4 +1,4 @@
-"""Utility per la configurazione e il collegamento Supabase del gestionale Barber."""
+"""Utility per la configurazione e il collegamento Supabase del gestionale Private Barber Manager."""
 
 from urllib.parse import urlparse
 

@@ -2,7 +2,7 @@ import streamlit as st
 from db.database import init_db
 
 st.set_page_config(
-    page_title="Local Barber Manager",
+    page_title="Private Barber Manager",
     page_icon="✂️",
     layout="wide",
 )
