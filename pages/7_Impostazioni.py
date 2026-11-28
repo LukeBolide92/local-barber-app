@@ -22,7 +22,7 @@ from services.supabase_credential_service import (
 )
 
 from utils.page_header import render_page_header
-from utils.supabase import extract_project_ref, mask_token
+from utils.supabase import extract_project_ref
 
 init_db()
 
@@ -222,6 +222,17 @@ with tab_remota:
                             "Errore imprevisto durante la gestione delle credenziali. "
                             "Riprova."
                         )
+                    else:
+                        # Se tutto è andato bene, mostra l'opzione di rimozione
+                        if project_ref:
+                            confirm_remove = st.checkbox(
+                                "Confermo di voler rimuovere le credenziali salvate",
+                                key="confirm_remove_pat",
+                            )
+                            if st.button("Rimuovi credenziali salvate", disabled=not confirm_remove):
+                                delete_pat(project_ref)
+                                st.success("Credenziali (PAT) cancellate dal vault.")
+                                st.rerun()
 
 # st.markdown("---")
 render_page_header("Informazioni")
