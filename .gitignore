@@ -3,7 +3,7 @@
 /.idea/
 __pycache__/
 *.pyc
-barber.db
+old-data/barber.db
 backups/
 /data/
 
