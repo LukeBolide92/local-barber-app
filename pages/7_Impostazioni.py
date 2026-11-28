@@ -175,9 +175,9 @@ with tab_remota:
         st.markdown("**Passaggio 2 – Creazione progetto**")
         st.write("Crea un nuovo progetto Supabase: scegli il nome, la regione e crea la password del database (conservala in un luogo sicuro). Il gestionale non richiede la password del database.")
         st.markdown("**Passaggio 3 – Recupero Project URL**")
-        st.write("Nel pannello di controllo di Supabase, clicca sul pulsante **'Connect'**, seleziona **'Connect via API'** e copia il valore del campo **'SUPABASE_URL'** (formato `https://<project-ref>.supabase.co`). Incollalo nel campo dedicato.")
+        st.write("Nel pannello di controllo di Supabase, clicca sul pulsante **'Connect'**, seleziona **'Connect via API'** e copia il valore del campo **'SUPABASE_URL'** (formato `https://<project-ref>.supabase.co`). Incollalo nel campo dedicato della prossima sezione.")
         st.markdown("**Passaggio 4 – Creazione Personal Access Token**")
-        st.write("Genera un PAT in Supabase (documentazione: https://supabase.com/docs/guides/platform/access-control). Il token è una credenziale potente: va trattato come una password.")
+        st.write("Genera un PAT in Supabase: vai su Settings → Access Tokens → Generate new token (documentazione: https://supabase.com/docs/guides/platform/access-control). Il token è una credenziale potente: va trattato come una password.")
         st.markdown("**Passaggio 5 – Collegamento**")
         st.write("Inserisci Project URL e PAT, poi premi il pulsante **'Verifica e configura'**.")
 
